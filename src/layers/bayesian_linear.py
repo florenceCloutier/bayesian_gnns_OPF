@@ -118,7 +118,6 @@ class BayesianLinear(torch.nn.Module):
         weight_prior = Normal(self.prior_weight_mu, self.prior_weight_sigma)
         sigma_weight = torch.log1p(torch.exp(self.rho_weight))
         weight_posterior = Normal(self.mu_weight, sigma_weight)
-        # TODO: should this be a sum or a mean?
         kl_weight = torch.distributions.kl_divergence(weight_posterior, weight_prior).sum()
 
         if self.mu_bias is not None:
