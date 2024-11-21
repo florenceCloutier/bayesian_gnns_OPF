@@ -30,7 +30,7 @@ class Model(torch.nn.Module):
 data = train_ds[0]
 model = to_hetero(Model(), data.metadata())
 
-print(data['bus', 'ac_line', 'bus'].edge_attr.shape)
+print(data['bus', 'ac_line', 'bus'].edge_index.size(1))
 
 with torch.no_grad(): # Initialize lazy modules.
     out = model(data.x_dict, data.edge_index_dict)
@@ -48,8 +48,8 @@ for data in training_loader:
     loss_bus = F.mse_loss(out['bus'], data['bus'].y)
 
     loss_supervised = loss_bus + loss_generator
-    branch_powers = compute_branch_powers(out, data)
-    print(data['bus', 'ac_line', 'bus'].edge_label.shape)
+    branch_powers = compute_branch_powers(out, data, 'transformer')
+    print(branch_powers[0])
     #print(out['generator'].shape)
 
     print(f"Loss: {loss_supervised}")

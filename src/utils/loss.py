@@ -23,6 +23,23 @@ HeteroData Mapping to Raw OPF Data:
   * ptr: Defines graph boundaries in a batched dataset.
 """
 
+BRANCH_FEATURE_INDICES = {
+    'ac_line': {
+        'b_fr': 2,
+        'b_to': 3,
+        'R_ij': 4,
+        'X_ij': 5,
+    },
+    'transformer': {
+        'b_fr': 9,
+        'b_to': 10,
+        'R_ij': 2,
+        'X_ij': 3,
+        'tap': 7,
+        'shift': 8,
+    }
+}
+
 
 def compute_branch_powers(out, data, type):
     voltage_magnitude = out['bus'][:, 1] # |V|
@@ -38,14 +55,21 @@ def compute_branch_powers(out, data, type):
 
 
     # Extract branch features (correct indices derived from canos paper)
-    b_fr = edge_attr[:, 2]
-    b_to = edge_attr[:, 3]
-    R_ij = edge_attr[:, 4]
-    X_ij = edge_attr[:, 5]
+    indices = BRANCH_FEATURE_INDICES[type]
+    b_fr = edge_attr[:, indices['b_fr']]
+    b_to = edge_attr[:, indices['b_to']]
+    R_ij = edge_attr[:, indices['R_ij']]
+    X_ij = edge_attr[:, indices['X_ij']]
+
+    # unified tap ratio and shift initialization
+    T_ij = torch.ones(edge_attr.shape[0], dtype=torch.complex64)
+    shift_rad = torch.zeros(edge_attr.shape[0])
 
     if type == 'transformer':
-        tap = edge_attr[:, 9]
-        shift = edge_attr[:, 10]
+        tap = edge_attr[:, indices['tap']]
+        shift = edge_attr[:, indices['shift']]
+        shift_rad = shift * (torch.pi / 180)
+        T_ij = tap * torch.exp(1j * shift_rad)
 
     # Series admittance
     Z_ij = R_ij + 1j * X_ij
@@ -72,10 +96,10 @@ def compute_branch_powers(out, data, type):
     Vi_conj_Vj = V_i.conj() * V_j
 
     # Equation 9 (not sure but i think for ac_line, we set Tij to 1)
-    S_ij = (Y_ij + Y_c).conj() * (V_i_abs_squared) - Y_ij.conj() * (Vi_Vj_conj)
+    S_ij = (Y_ij + Y_c).conj() * (V_i_abs_squared / torch.abs(T_ij) ** 2) - Y_ij.conj() * (Vi_Vj_conj / T_ij)
 
     # Equation 10
-    S_ji = (Y_ij + Y_c).conj() * V_j_abs_squared - Y_ij.conj() * (Vi_conj_Vj)
+    S_ji = (Y_ij + Y_c).conj() * V_j_abs_squared - Y_ij.conj() * (Vi_conj_Vj / T_ij.conj())
 
     pf = S_ij.real
     qf = S_ij.imag
