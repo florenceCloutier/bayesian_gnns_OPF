@@ -23,6 +23,7 @@ HeteroData Mapping to Raw OPF Data:
   * ptr: Defines graph boundaries in a batched dataset.
 """
 
+# These indices are based on OPF dataset paper: https://arxiv.org/pdf/2406.07234
 BRANCH_FEATURE_INDICES = {
     'ac_line': {
         'b_fr': 2,
@@ -52,9 +53,7 @@ def compute_branch_powers(out, data, type):
     edge_index = data['bus', type, 'bus'].edge_index
     edge_attr = data['bus', type, 'bus'].edge_attr
 
-
-
-    # Extract branch features (correct indices derived from canos paper)
+    # Extract branch features 
     indices = BRANCH_FEATURE_INDICES[type]
     b_fr = edge_attr[:, indices['b_fr']]
     b_to = edge_attr[:, indices['b_to']]

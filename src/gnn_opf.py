@@ -24,6 +24,45 @@ class Model(torch.nn.Module):
         return x
 
 
+"""
+The loss_supervised function from the CANOS paper aggregates the L2 losses for the bus voltage,
+the generator power, and the branch power between the predicted values and the targets.
+"""
+def loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer):
+    loss_generator = F.mse_loss(out['generator'], data['generator'].y)
+
+    loss_bus = F.mse_loss(out['bus'], data['bus'].y)
+
+    pf_pred_ac_line, qf_pred_ac_line, pt_pred_ac_line, qt_pred_ac_line = branch_powers_ac_line
+    pf_pred_transformer, qf_pred_transformer, pt_pred_transformer, qt_pred_transformer = branch_powers_transformer
+
+    assert 'edge_label' in data['bus', 'ac_line', 'bus'], "Edge label for AC lines is missing."
+    edge_label_ac_line = data['bus', 'ac_line', 'bus'].edge_label
+    pf_true_ac_line = edge_label_ac_line[:, 0]
+    qf_true_ac_line = edge_label_ac_line[:, 1]
+    pt_true_ac_line = edge_label_ac_line[:, 2]
+    qt_true_ac_line = edge_label_ac_line[:, 3]
+
+    assert 'edge_label' in data['bus', 'transformer', 'bus'], "Edge label for transformers is missing."
+    edge_label_transformer = data['bus', 'transformer', 'bus'].edge_label
+    pf_true_transformer = edge_label_transformer[:, 0]
+    qf_true_transformer = edge_label_transformer[:, 1]
+    pt_true_transformer = edge_label_transformer[:, 2]
+    qt_true_transformer = edge_label_transformer[:, 3]
+
+    loss_pf = F.mse_loss(pf_pred_ac_line, pf_true_ac_line) + F.mse_loss(pf_pred_transformer, pf_true_transformer)
+    loss_qf = F.mse_loss(qf_pred_ac_line, qf_true_ac_line) + F.mse_loss(qf_pred_transformer, qf_true_transformer)
+    loss_pt = F.mse_loss(pt_pred_ac_line, pt_true_ac_line) + F.mse_loss(pt_pred_transformer, pt_true_transformer)
+    loss_qt = F.mse_loss(qt_pred_ac_line, qt_true_ac_line) + F.mse_loss(qt_pred_transformer, qt_true_transformer)
+
+    total_loss = loss_generator + loss_bus + loss_pf + loss_qf + loss_pt + loss_qt
+
+    return total_loss
+
+
+def loss_constraints(out, data, type):
+    pass
+
 
 # Initialise the model.
 # data.metadata() here refers to the PyG graph metadata, not the OPFData metadata.
@@ -44,12 +83,10 @@ for data in training_loader:
     optimizer.zero_grad()
     out = model(data.x_dict, data.edge_index_dict)
 
-    loss_generator = F.mse_loss(out['generator'], data['generator'].y)
-    loss_bus = F.mse_loss(out['bus'], data['bus'].y)
+    branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
+    branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
 
-    loss_supervised = loss_bus + loss_generator
-    branch_powers = compute_branch_powers(out, data, 'transformer')
-    print(branch_powers[0])
+    loss_supervised = loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
     #print(out['generator'].shape)
 
     print(f"Loss: {loss_supervised}")
