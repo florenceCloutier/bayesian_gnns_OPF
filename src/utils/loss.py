@@ -41,6 +41,21 @@ BRANCH_FEATURE_INDICES = {
     }
 }
 
+"""(
+Bound constraints (6)-(7) from CANOS
+y = sigmoid(y) * (y_upper - y_lower) + y_lower
+"""
+def enforce_bound_constraints(out, data):
+    vmin = data['bus'].x[:, 2]
+    vmax = data['bus'].x[:, 3]
+    pmin = data['generator'].x[:, 2]
+    pmax = data['generator'].x[:, 3]
+    qmin = data['generator'].x[:, 5]
+    qmax = data['generator'].x[:, 6]
+
+    out['bus'][:, 1] = torch.sigmoid(out['bus'][:, 1]) * (vmax - vmin) + vmin
+    out['generator'][:, 0] = torch.sigmoid(out['generator'][:, 0]) * (pmax - pmin) + pmin
+    out['generator'][:, 1] = torch.sigmoid(out['generator'][:, 1]) * (qmax - qmin) + qmin
 
 def compute_branch_powers(out, data, type):
     voltage_magnitude = out['bus'][:, 1] # |V|

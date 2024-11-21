@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
-from utils.loss import compute_branch_powers
+from utils.loss import compute_branch_powers, enforce_bound_constraints
 
 # Load the 14-bus OPFData FullTopology dataset training split and store it in the
 # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
@@ -28,7 +28,7 @@ class Model(torch.nn.Module):
 The loss_supervised function from the CANOS paper aggregates the L2 losses for the bus voltage,
 the generator power, and the branch power between the predicted values and the targets.
 """
-def loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer):
+def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer):
     loss_generator = F.mse_loss(out['generator'], data['generator'].y)
 
     loss_bus = F.mse_loss(out['bus'], data['bus'].y)
@@ -83,13 +83,16 @@ for data in training_loader:
     optimizer.zero_grad()
     out = model(data.x_dict, data.edge_index_dict)
 
+    # Bound constraints (6) and (7) from CANOS
+    enforce_bound_constraints(out, data)
+    
     branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
     branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
 
-    loss_supervised = loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
+    loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
     #print(out['generator'].shape)
 
     print(f"Loss: {loss_supervised}")
     loss_supervised.backward()
     optimizer.step()
-    break
+
