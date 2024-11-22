@@ -82,9 +82,11 @@ with torch.no_grad(): # Initialize lazy modules.
     model.train()
 
 for data in training_loader:
-    # print(data)
+    #print(data)
     optimizer.zero_grad()
     out = model(data.x_dict, data.edge_index_dict)
+
+    #print(out['bus'])
 
     # Bound constraints (6) and (7) from CANOS
     enforce_bound_constraints(out, data)
@@ -92,8 +94,10 @@ for data in training_loader:
     branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
     branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
 
+
+
     loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
-    #print(out['generator'].shape)
+    # #print(out['generator'].shape)
 
     loss_constraint = loss_constraints(out, data, branch_powers_ac_line, branch_powers_transformer)
 
