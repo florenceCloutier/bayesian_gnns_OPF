@@ -41,7 +41,35 @@ BRANCH_FEATURE_INDICES = {
     }
 }
 
-"""(
+
+def compute_angle_differences(out, data, type):
+    """
+        Compute voltage angle differences (theta_ij) for branches.
+
+        Args:
+            out (dict): Predicted outputs from the model.
+                - 'bus': Predicted bus voltage angles and magnitudes.
+            data (HeteroData): Graph data structure with edge indices.
+            type (str): The type of branch ('ac_line' or 'transformer').
+
+        Returns:
+            theta_ij (Tensor): Voltage angle differences for each branch.
+    """
+    voltage_angle = out['bus'][:, 0]
+
+    edge_index = data['bus', type, 'bus'].edge_index
+
+    from_bus = edge_index[0]
+    to_bus = edge_index[1]
+
+    theta_i = voltage_angle[from_bus]
+    theta_j = voltage_angle[to_bus]
+
+    theta_ij = theta_i - theta_j # maybe need to wrap angles?
+    return theta_ij
+
+
+"""
 Bound constraints (6)-(7) from CANOS
 y = sigmoid(y) * (y_upper - y_lower) + y_lower
 """

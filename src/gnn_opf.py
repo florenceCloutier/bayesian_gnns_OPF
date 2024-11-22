@@ -61,6 +61,9 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
 
 
 def loss_constraints(out, data, type):
+    vmin = data['bus'].x[:, 2]
+    vmax = data['bus'].x[:, 3]
+    vm_pred = out['bus'][:, 1]
     pass
 
 
@@ -79,20 +82,25 @@ with torch.no_grad(): # Initialize lazy modules.
     model.train()
 
 for data in training_loader:
-    print(data)
+    #print(data)
     optimizer.zero_grad()
     out = model(data.x_dict, data.edge_index_dict)
 
-    # Bound constraints (6) and (7) from CANOS
-    enforce_bound_constraints(out, data)
+    print(out['bus'])
+
+    # # Bound constraints (6) and (7) from CANOS
+    # enforce_bound_constraints(out, data)
     
-    branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
-    branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
+    # branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
+    # branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
 
-    loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
-    #print(out['generator'].shape)
 
-    print(f"Loss: {loss_supervised}")
-    loss_supervised.backward()
-    optimizer.step()
+
+    # loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
+    # #print(out['generator'].shape)
+
+    # print(f"Loss: {loss_supervised}")
+    # loss_supervised.backward()
+    # optimizer.step()
+    break
 
