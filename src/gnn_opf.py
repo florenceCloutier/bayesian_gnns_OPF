@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
-from utils.loss import compute_branch_powers, enforce_bound_constraints
+from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss
 
 # Load the 14-bus OPFData FullTopology dataset training split and store it in the
 # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
@@ -60,8 +60,11 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
     return total_loss
 
 
-def loss_constraints(out, data, type):
-    pass
+def loss_constraints(out, data, branch_powers_ac_line, branch_powers_transformer):
+    pb_loss = power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transformer)
+    branch_loss = flow_loss(data, branch_powers_ac_line, branch_powers_transformer)
+
+    return pb_loss + branch_loss
 
 
 # Initialise the model.
@@ -79,7 +82,7 @@ with torch.no_grad(): # Initialize lazy modules.
     model.train()
 
 for data in training_loader:
-    print(data)
+    # print(data)
     optimizer.zero_grad()
     out = model(data.x_dict, data.edge_index_dict)
 
@@ -91,6 +94,10 @@ for data in training_loader:
 
     loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
     #print(out['generator'].shape)
+
+    loss_constraint = loss_constraints(out, data, branch_powers_ac_line, branch_powers_transformer)
+
+    loss_total = loss_supervised + 0.1*loss_constraint
 
     print(f"Loss: {loss_supervised}")
     loss_supervised.backward()
