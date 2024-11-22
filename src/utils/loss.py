@@ -155,7 +155,7 @@ def compute_branch_powers(out, data, type):
     return pf, qf, pt, qt
 
 def power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transformer):
-  """Check power balance constraints at each load"""
+  """Check power balance constraints at each bus (Eq. 8)"""
   def loss(pg, qg, pf, qf, pd, qd, p_shunt, q_shunt):
     # Net injection at from bus
     p_violation = torch.abs(pg - pd - pf - p_shunt)
@@ -219,7 +219,8 @@ def power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transform
   return loss(pg, qg, pf, qf, pd, qd, p_shunt, q_shunt)
 
 def flow_loss(data, branch_powers_ac_line, branch_powers_transformer):
-  """Check power balance constraints at each load"""
+  """Check flow constraints at each branch (Eq. 11)
+     Use relu to only penalize if we go over the max."""
   pf_pred_ac_line, qf_pred_ac_line, _, _ = branch_powers_ac_line
   edge_attr = data['bus', 'ac_line', 'bus'].edge_attr
   rate_a = edge_attr[:, BRANCH_FEATURE_INDICES['ac_line']['rate_a']]
