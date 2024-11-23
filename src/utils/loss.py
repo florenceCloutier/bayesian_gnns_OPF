@@ -155,7 +155,8 @@ def compute_branch_powers(out, data, type):
     return pf, qf, pt, qt
 
 def power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transformer):
-  """Check power balance constraints at each bus (Eq. 8)"""
+  """Check power balance constraints at each bus (Eq. 8)
+     The power in should equal the power demand on each bus."""
   def loss(pg, qg, pf, qf, pd, qd, p_shunt, q_shunt):
     # Net injection at from bus
     p_violation = torch.abs(pg - pd - pf - p_shunt)
