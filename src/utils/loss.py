@@ -224,7 +224,7 @@ def flow_loss(data, branch_powers_ac_line, branch_powers_transformer):
   pf_pred_ac_line, qf_pred_ac_line, _, _ = branch_powers_ac_line
   edge_attr = data['bus', 'ac_line', 'bus'].edge_attr
   rate_a = edge_attr[:, BRANCH_FEATURE_INDICES['ac_line']['rate_a']]
-  flow_loss_ac = torch.relu(torch.square(pf_pred_ac_line) + torch.square(qf_pred_ac_line) - torch.square(rate_a))
+  flow_loss_ac = torch.relu(torch.square(pf_pred_ac_line) + torch.square(qf_pred_ac_line) - rate_a)
 
   pf_pred_transformer, qf_pred_transformer, _, _ = branch_powers_transformer
   edge_attr = data['bus', 'transformer', 'bus'].edge_attr
