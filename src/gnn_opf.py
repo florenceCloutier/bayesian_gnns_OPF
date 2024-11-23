@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
-from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss
+from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss, voltage_angle_loss
 
 # Load the 14-bus OPFData FullTopology dataset training split and store it in the
 # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
@@ -63,8 +63,9 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
 def loss_constraints(out, data, branch_powers_ac_line, branch_powers_transformer):
     pb_loss = power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transformer)
     branch_loss = flow_loss(data, branch_powers_ac_line, branch_powers_transformer)
+    va_loss = voltage_angle_loss(out, data)
 
-    return pb_loss + branch_loss
+    return pb_loss + branch_loss + va_loss
 
 
 # Initialise the model.
