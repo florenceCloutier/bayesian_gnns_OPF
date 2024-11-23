@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
-from utils.loss import compute_branch_powers, enforce_bound_constraints
+from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss, voltage_angle_loss
 
 # Load the 14-bus OPFData FullTopology dataset training split and store it in the
 # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
@@ -60,11 +60,12 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
     return total_loss
 
 
-def loss_constraints(out, data, type):
-    vmin = data['bus'].x[:, 2]
-    vmax = data['bus'].x[:, 3]
-    vm_pred = out['bus'][:, 1]
-    pass
+def loss_constraints(out, data, branch_powers_ac_line, branch_powers_transformer):
+    pb_loss = power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transformer)
+    branch_loss = flow_loss(data, branch_powers_ac_line, branch_powers_transformer)
+    va_loss = voltage_angle_loss(out, data)
+
+    return pb_loss + branch_loss + va_loss
 
 
 # Initialise the model.
@@ -86,21 +87,24 @@ for data in training_loader:
     optimizer.zero_grad()
     out = model(data.x_dict, data.edge_index_dict)
 
-    print(out['bus'])
+    #print(out['bus'])
 
-    # # Bound constraints (6) and (7) from CANOS
-    # enforce_bound_constraints(out, data)
+    # Bound constraints (6) and (7) from CANOS
+    enforce_bound_constraints(out, data)
     
-    # branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
-    # branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
+    branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
+    branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
 
 
 
-    # loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
+    loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
     # #print(out['generator'].shape)
 
-    # print(f"Loss: {loss_supervised}")
-    # loss_supervised.backward()
-    # optimizer.step()
-    break
+    loss_constraint = loss_constraints(out, data, branch_powers_ac_line, branch_powers_transformer)
+
+    loss_total = loss_supervised + 0.1*loss_constraint
+
+    print(f"Loss: {loss_supervised}")
+    loss_supervised.backward()
+    optimizer.step()
 
