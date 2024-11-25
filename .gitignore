@@ -168,3 +168,11 @@ cython_debug/
 
 # Data
 data/
+
+# Logging
+outputs/
+wandb/
+wandb/latest-run
+
+# Slurm
+slurm-*
