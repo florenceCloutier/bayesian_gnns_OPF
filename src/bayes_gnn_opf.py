@@ -34,6 +34,8 @@ BRANCH_FEATURE_INDICES = {
     }
 }
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def compute_branch_powers(out, data, type):
     voltage_magnitude = out['bus'][:, 1] # |V|
     voltage_angle = out['bus'][:, 0] # theta in radians
@@ -133,8 +135,15 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
     loss_qt = F.mse_loss(qt_pred_ac_line, qt_true_ac_line) + F.mse_loss(qt_pred_transformer, qt_true_transformer)
 
     total_loss = loss_generator + loss_bus + loss_pf + loss_qf + loss_pt + loss_qt
+    
+    #Store the computed loss for the next epoch AL multiplier computation in the previous_loss dictionnary
+    previous_loss['eq_loss'][i] = eq_loss.detach().clone()
+    previous_loss['gen_ineq_loss'][i] = gen_ineq_loss.detach().clone()
+    previous_loss['node_ineq_loss'][i] = node_ineq_loss.detach().clone()
+    previous_loss['flow_loss'][i] = flow_loss.detach().clone()
 
-    return total_loss
+
+    return total_loss, previous_loss
 
 """
 Bound constraints (6)-(7) from CANOS
@@ -163,11 +172,27 @@ def learning_rate_schedule(step, warmup_steps, initial_learning_rate, peak_learn
         decayed_lr = peak_learning_rate * (decay_rate ** decay_steps)
         return max(decayed_lr, final_learning_rate)
 
+def init_lambda(data): # We make sure the size of the lambdas fit the size of the loss dictionnaries
+    '''
+    This is where we initiate the values of the AL multipliers to be 0. Most importantly we decide of the shape of those tensors here.
+    Loader here is the training set.
+    '''
+    node_nb = data['data']['num_nodes']
+    edge_nb = data['data']['num_edges']
+    nb_of_batches = len(data)
+    lambdas = {}
+    lambdas['lf_eq'] = torch.zeros((nb_of_batches, 2, node_nb )) # 2 equality constraints per node per batch
+    lambdas['lh_ineq_node'] = torch.zeros((nb_of_batches, 2, node_nb))
+    lambdas['lh_flow'] = torch.zeros((nb_of_batches, edge_nb))  # 1 per edge per batch
+
+    return lambdas
+
 """
 Training loop
 Hyperparameters from CANOS 
 """
 def train_model(train_ds,
+                lambdas,
                 train_log_interval=4,
                 initial_learning_rate=0.0, 
                 peak_learning_rate=2e-4, 
@@ -177,7 +202,10 @@ def train_model(train_ds,
                 transition_steps=4000,
                 total_steps=600000,
                 epochs=100, 
-                kl_weight=0.1):
+                kl_weight=0.1,
+                # Penalty multipliers: mun0, muf0, muh0, betaf, betah
+                penalty_multipliers =  [1, 0.001, 0.1, 1.00002, 1.00003] #These multiplers are generally static except for mun0, which is a balancing term to decide of we want to focus more on cost or eq loss
+    ):
     
     
     # Batch and shuffle.
@@ -196,11 +224,30 @@ def train_model(train_ds,
     step = 0
     for epoch in range(epochs):
         epoch_loss = 0
+        previous_loss = 0
         for batch_idx, data in enumerate(training_loader):
             if step >= total_steps:
                 break  # Stop training after 600,000 steps
-
+            
+            # adaptive parameter update
+            muf = penalty_multipliers[1]
+            muh = penalty_multipliers[2]
+            mun = penalty_multipliers[1]
+    
+            previous_loss = previous_loss.copy() # This previous loss dictionnary has the same shape as the AL multiplers
+            # We have to copy to avoid torch issues with in place operations being changed
+            
+            # Check this out: https://anonymous.4open.science/r/opf_pinn_iclr-B83E/training_steps.py
+            
             optimizer.zero_grad()
+
+            # Step 1: Get the Augmented Lagrangian multipliers
+            # Update all of the multipliers
+            lambdas['lf_eq'][batch_idx] = (lambdas['lf_eq'][batch_idx] + 2*muf*previous_loss['eq_loss'][batch_idx]).to(device) # We have to update them with the loss of this batch at the previous iteration
+            lambdas['lh_ineq_gen'][batch_idx] = (lambdas['lh_ineq_gen'][batch_idx] + 2*muh*previous_loss['gen_ineq_loss'][batch_idx]).to(device)
+            lambdas['lh_ineq_node'][batch_idx] = (lambdas['lh_ineq_node'][batch_idx] + 2*muh*previous_loss['node_ineq_loss'][batch_idx]).to(device)
+            lambdas['lh_flow'][batch_idx] = (lambdas['lh_flow'][batch_idx] + 2*muh*previous_loss['flow_loss'][batch_idx]).to(device)
+
             out = model(data.x_dict, data.edge_index_dict)
             
             enforce_bound_constraints(out, data) 
@@ -294,7 +341,7 @@ def train_model(train_ds,
                     'voltage_angle_difference_bus': voltage_angle_difference(voltage_angle_bus, [bus_angmin, bus_angmax]),
                     'thermal_limits': thermal_limit_violation(pf_pred_ac_line, qf_pred_ac_line, pf_pred_transformer, qf_pred_transformer, rate_a_ac_line, rate_a_transformer),
                 }
-                wandb.log(metrics)
+                # wandb.log(metrics)
 
         print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}")
 
@@ -305,9 +352,10 @@ def main(cfg: DictConfig):
     # Load the 14-bus OPFData FullTopology dataset training split and store it in the
     # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
     train_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split="train")
+    lambdas = init_lambda(train_ds)
     train_model(train_ds)
 
 
 if __name__ == "__main__":
-    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf")
+    # wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf")
     main()
