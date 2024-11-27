@@ -48,33 +48,6 @@ BRANCH_FEATURE_INDICES = {
 }
 
 
-def compute_angle_differences(out, data, type):
-    """
-        Compute voltage angle differences (theta_ij) for branches.
-
-        Args:
-            out (dict): Predicted outputs from the model.
-                - 'bus': Predicted bus voltage angles and magnitudes.
-            data (HeteroData): Graph data structure with edge indices.
-            type (str): The type of branch ('ac_line' or 'transformer').
-
-        Returns:
-            theta_ij (Tensor): Voltage angle differences for each branch.
-    """
-    voltage_angle = out['bus'][:, 0]
-
-    edge_index = data['bus', type, 'bus'].edge_index
-
-    from_bus = edge_index[0]
-    to_bus = edge_index[1]
-
-    theta_i = voltage_angle[from_bus]
-    theta_j = voltage_angle[to_bus]
-
-    theta_ij = theta_i - theta_j # maybe need to wrap angles?
-    return theta_ij
-
-
 """
 Bound constraints (6)-(7) from CANOS
 y = sigmoid(y) * (y_upper - y_lower) + y_lower
@@ -159,8 +132,11 @@ def compute_branch_powers(out, data, type):
     return pf, qf, pt, qt
 
 def power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transformer):
-    """Check power balance constraints at each bus (Eq. 8)
-       The power in should equal the power demand on each bus."""
+    """
+    Check power balance constraints at each bus (Eq. 8)
+    The power in should equal the power demand on each bus.
+    Implements violation constraints v_5a, v_5b, v_6a, v_6b. 
+    """
     def loss(pg, qg, pf, qf, pd, qd, p_shunt, q_shunt):
         # Net injection at from bus
         p_violation = torch.abs(pg - pd - pf - p_shunt)
@@ -224,8 +200,11 @@ def power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transform
     return loss(pg, qg, pf, qf, pd, qd, p_shunt, q_shunt)
 
 def flow_loss(data, branch_powers_ac_line, branch_powers_transformer):
-    """Check flow constraints at each branch (Eq. 11)
-        Use relu to only penalize if we go over the max."""
+    """
+    Check flow constraints at each branch (Eq. 11)
+    Use relu to only penalize if we go over the max.
+    Implements violation constraint v_4
+    """
     pf_pred_ac_line, qf_pred_ac_line, _, _ = branch_powers_ac_line
     edge_attr = data['bus', 'ac_line', 'bus'].edge_attr
     rate_a = edge_attr[:, BRANCH_FEATURE_INDICES['ac_line']['rate_a']]
@@ -238,30 +217,116 @@ def flow_loss(data, branch_powers_ac_line, branch_powers_transformer):
 
     return flow_loss_ac.mean(dim=0) + flow_loss_transformer.mean(dim=0)
 
+def voltage_magnitude_loss(out, data):
+    """
+    Compute violation degrees for voltage magnitude bounds at each bus.
+    Returns the violation degrees for buses with out-of-bound voltages.
+
+    Implements violation constraint v_2a
+    """
+
+    vmin = data['bus'].x[:, 2]
+    vmax = data['bus'].x[:, 3]
+    v_hat = out['bus'][:, 1] # voltage magnitude predictions
+
+    # Satisfiability degrees -> satisfied if sigma(x) <= 0 and smaller means more satisfiability
+    sigma_2a_L = vmin - v_hat # sigma(x) <= 0 => v_hat is bigger than min voltage
+    sigma_2a_R = v_hat - vmax # sigma(x) <= 0 => v_hat is smaller than max voltage
+
+    # using the satisfiability degrees we can now define the violation degrees
+    # for ineq constraints => v(x) = max(0, sigma(x))
+
+    violation_degrees = torch.mean(torch.relu(sigma_2a_L) + torch.relu(sigma_2a_R))
+
+    return violation_degrees
+
+
 def voltage_angle_loss(out, data):    
-    """Check voltage angle constraints at each branch (Eq. 12)
-       Use relu to only penalize if we break the constraints."""
+    """
+    Check voltage angle constraints at each branch (Eq. 12)
+    Use relu to only penalize if we break the constraints.
+    Implements violation constraint v_2b
+    """
     edge_attr = data['bus', 'ac_line', 'bus'].edge_attr
     edge_index = data['bus', 'ac_line', 'bus'].edge_index
+
     from_bus = edge_index[0]
+    to_bus = edge_index[1]
+
     va_min = edge_attr[:, BRANCH_FEATURE_INDICES['ac_line']['angmin']]
     va_max = edge_attr[:, BRANCH_FEATURE_INDICES['ac_line']['angmax']]
-    va = out['bus'][from_bus, 0]
-    max_loss_ac = torch.relu(va - va_max)
-    min_loss_ac = torch.relu(va_min - va)
+
+    # Compute voltage angle difference θ_ij = θ_i - θ_j
+    va_diff_ac = out['bus'][from_bus, 0] - out['bus'][to_bus, 0]
+
+    max_loss_ac = torch.relu(va_diff_ac - va_max)
+    min_loss_ac = torch.relu(va_min - va_diff_ac)
     va_loss_ac = max_loss_ac + min_loss_ac
 
     edge_attr = data['bus', 'transformer', 'bus'].edge_attr
     edge_index = data['bus', 'transformer', 'bus'].edge_index
+
     from_bus = edge_index[0]
+    to_bus = edge_index[1]
+
     va_min = edge_attr[:, BRANCH_FEATURE_INDICES['transformer']['angmin']]
     va_max = edge_attr[:, BRANCH_FEATURE_INDICES['transformer']['angmax']]
-    va = out['bus'][from_bus, 0]
-    max_loss_transformer = torch.relu(va - va_max)
-    min_loss_transformer = torch.relu(va_min - va)
+
+    va_diff_tf = out['bus'][from_bus, 0] - out['bus'][to_bus, 0]
+
+    max_loss_transformer = torch.relu(va_diff_tf - va_max)
+    min_loss_transformer = torch.relu(va_min - va_diff_tf)
     va_loss_transformer = max_loss_transformer + min_loss_transformer
 
     return va_loss_ac.mean(dim=0) + va_loss_transformer.mean(dim=0)
 
+def real_power_loss(out, data):
+    """
+    Compute violation degrees for active power generation limits at each generator.
+    Implements violation constraint v_3a.
+    """
+    p_hat = out['generator'][:, 0]
+    pmin = data['generator'].x[:, 2]
+    pmax = data['generator'].x[:, 3]
+
+    # Compute satisfiability degrees
+    sigma_L = pmin - p_hat  # sigma^L_3a: Violation of lower bound
+    sigma_R = p_hat - pmax  # sigma^R_3a: Violation of upper bound
+
+    # Compute violation degrees using ReLU (v_c(sigma) = max(0, sigma))
+    violation_L = torch.relu(sigma_L)  # Left violation degree
+    violation_R = torch.relu(sigma_R)  # Right violation degree
+
+    # Total violation degree for each generator
+    total_violation = violation_L + violation_R
+
+    # Average violation across all generators
+    avg_violation = total_violation.mean(dim=0)
+
+    return avg_violation
 
 
+def reactive_power_loss(out, data):
+    """
+    Compute violation degrees for reactive power generation limits at each generator.
+    Implements violation constraint v_3b
+    """
+    q_hat = out['generator'][:, 1]
+    qmin = data['generator'].x[:, 5]
+    qmax = data['generator'].x[:, 6]
+
+    # Compute satisfiability degrees
+    sigma_L = qmin - q_hat  # sigma^L_3a: Violation of lower bound
+    sigma_R = q_hat - qmax  # sigma^R_3a: Violation of upper bound
+
+    # Compute violation degrees using ReLU (v_c(sigma) = max(0, sigma))
+    violation_L = torch.relu(sigma_L)  # Left violation degree
+    violation_R = torch.relu(sigma_R)  # Right violation degree
+
+    # Total violation degree for each generator
+    total_violation = violation_L + violation_R
+
+    # Average violation across all generators
+    avg_violation = total_violation.mean(dim=0)
+
+    return avg_violation
