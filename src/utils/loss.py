@@ -64,7 +64,7 @@ def enforce_bound_constraints(out, data):
     out['generator'][:, 0] = torch.sigmoid(out['generator'][:, 0]) * (pmax - pmin) + pmin
     out['generator'][:, 1] = torch.sigmoid(out['generator'][:, 1]) * (qmax - qmin) + qmin
 
-def compute_branch_powers(out, data, type):
+def compute_branch_powers(out, data, type, device):
     voltage_magnitude = out['bus'][:, 1] # |V|
     voltage_angle = out['bus'][:, 0] # theta in radians
 
@@ -83,8 +83,8 @@ def compute_branch_powers(out, data, type):
     X_ij = edge_attr[:, indices['X_ij']]
 
     # unified tap ratio and shift initialization
-    T_ij = torch.ones(edge_attr.shape[0], dtype=torch.complex64)
-    shift_rad = torch.zeros(edge_attr.shape[0])
+    T_ij = torch.ones(edge_attr.shape[0], dtype=torch.complex64, device=device)
+    shift_rad = torch.zeros(edge_attr.shape[0], device=device)
 
     if type == 'transformer':
       tap = edge_attr[:, indices['tap']]
@@ -92,7 +92,7 @@ def compute_branch_powers(out, data, type):
       # shift_rad = shift * (torch.pi / 180)   # I think shift is already in radians?
       T_ij = tap * torch.exp(1j * shift_rad)
     else:
-       tap = torch.ones(edge_attr.shape[0])
+       tap = torch.ones(edge_attr.shape[0], device=device)
 
     # Series admittance
     Z_ij = R_ij + 1j * X_ij

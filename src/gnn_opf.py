@@ -70,8 +70,8 @@ def learning_step(model, optimizer, data_loader, lambdas, constraints, rho, alph
         out = model(data.x_dict, data.edge_index_dict)
 
         # compute branch powers
-        branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
-        branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
+        branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
+        branch_powers_transformer = compute_branch_powers(out, data, 'transformer', device)
 
         # supervised loss
         L_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
