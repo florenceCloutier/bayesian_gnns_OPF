@@ -128,6 +128,7 @@ constraints = {
 }
 
 with torch.no_grad(): # Initialize lazy modules.
+    data = data.to(device)
     out = model(data.x_dict, data.edge_index_dict)
     # Train with MSE loss for one epoch.
     # In reality we would need to account for AC-OPF constraints.
