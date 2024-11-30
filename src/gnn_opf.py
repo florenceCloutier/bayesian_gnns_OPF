@@ -69,6 +69,9 @@ def learning_step(model, optimizer, data_loader, lambdas, constraints, rho, alph
         # forward pass
         out = model(data.x_dict, data.edge_index_dict)
 
+        # Bound constraints (6) and (7) from CANOS
+        enforce_bound_constraints(out, data)
+
         # compute branch powers
         branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
         branch_powers_transformer = compute_branch_powers(out, data, 'transformer', device)
@@ -125,6 +128,7 @@ constraints = {
 }
 
 with torch.no_grad(): # Initialize lazy modules.
+    data = data.to(device)
     out = model(data.x_dict, data.edge_index_dict)
     # Train with MSE loss for one epoch.
     # In reality we would need to account for AC-OPF constraints.
