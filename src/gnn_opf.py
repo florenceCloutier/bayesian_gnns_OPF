@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
-from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss, voltage_angle_loss, voltage_magnitude_loss, reactive_power_loss, real_power_loss
+from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss, voltage_angle_loss, voltage_magnitude_loss, reactive_power_loss, real_power_loss, BRANCH_FEATURE_INDICES
 from utils.test import test_va_values
 
 # Load the 14-bus OPFData FullTopology dataset training split and store it in the
@@ -80,8 +80,8 @@ def learning_step(model, optimizer, data_loader, lambdas, constraints, rho, alph
         out = model(data.x_dict, data.edge_index_dict)
 
         # compute branch powers
-        branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
-        branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
+        branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
+        branch_powers_transformer = compute_branch_powers(out, data, 'transformer', device)
 
         # supervised loss
         L_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
@@ -140,6 +140,7 @@ constraints = {
 }
 
 with torch.no_grad(): # Initialize lazy modules.
+    data = data.to(device)
     out = model(data.x_dict, data.edge_index_dict)
     # Train with MSE loss for one epoch.
     # In reality we would need to account for AC-OPF constraints.
