@@ -81,7 +81,7 @@ def learning_step(model, optimizer, data_loader, lambdas, constraints, rho, alph
         L_constraints = 0.0
         for name, constraint_fn in constraints.items():
             if name == "power_balance":
-                violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer)
+                violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
             elif name == "flow":
                 violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
             else:

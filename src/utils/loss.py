@@ -148,55 +148,64 @@ def power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transform
     gen_edge_index = data["generator", "generator_link", "bus"].edge_index
     from_gen = gen_edge_index[0]
     to_bus = gen_edge_index[1]
-    pg = torch.zeros(out["bus"].shape[0])
-    qg = torch.zeros(out["bus"].shape[0])
-    pg_sum = torch.bincount(to_bus, weights=out["generator"][from_gen, 0])
-    qg_sum = torch.bincount(to_bus, weights=out["generator"][from_gen, 1])
-    pg[: pg_sum.shape[0]] = pg_sum
-    qg[: qg_sum.shape[0]] = qg_sum
+    pg = torch.zeros(out["bus"].shape[0], device=device)
+    qg = torch.zeros(out["bus"].shape[0], device=device)
+    pg_sum = pg.scatter_reduce(0, to_bus, out["generator"][from_gen, 0], reduce='sum')
+    qg_sum = qg.scatter_reduce(0, to_bus, out["generator"][from_gen, 1], reduce='sum')
+    pg = pg.clone()
+    qg = qg.clone()
+    pg[:pg_sum.shape[0]] = pg_sum
+    qg[:qg_sum.shape[0]] = qg_sum
 
     # Load power demands
     load_edge_index = data["load", "load_link", "bus"].edge_index
     from_load = load_edge_index[0]
     to_bus = load_edge_index[1]
-    pd = torch.zeros(out["bus"].shape[0])
-    qd = torch.zeros(out["bus"].shape[0])
-    pd_sum = torch.bincount(to_bus, weights=data["load"].x[from_load, 0])
-    qd_sum = torch.bincount(to_bus, weights=data["load"].x[from_load, 1])
+    pd = torch.zeros(out["bus"].shape[0], device=device)
+    qd = torch.zeros(out["bus"].shape[0], device=device)
+    pd_sum = pd.scatter_reduce(0, to_bus, data["load"].x[from_load, 0], reduce='sum')
+    qd_sum = qd.scatter_reduce(0, to_bus, data["load"].x[from_load, 1], reduce='sum')
+    pd = pg.clone()
+    qd = qg.clone()
     pd[: pd_sum.shape[0]] = pd_sum
     qd[: qd_sum.shape[0]] = qd_sum
 
     # Net power injection from branches
     ac_edge_index = data["bus", "ac_line", "bus"].edge_index
     from_bus = ac_edge_index[0]
-    pf = torch.zeros(out["bus"].shape[0])
-    qf = torch.zeros(out["bus"].shape[0])
+    pf = torch.zeros(out["bus"].shape[0], device=device)
+    qf = torch.zeros(out["bus"].shape[0], device=device)
     pf_pred_ac_line, qf_pred_ac_line, _, _ = branch_powers_ac_line
-    pf_sum = torch.bincount(from_bus, weights=pf_pred_ac_line)
-    qf_sum = torch.bincount(from_bus, weights=qf_pred_ac_line)
+    pf_sum = pf.scatter_reduce(0, from_bus, pf_pred_ac_line, reduce='sum')
+    qf_sum = qf.scatter_reduce(0, from_bus, qf_pred_ac_line, reduce='sum')
+    pf = pg.clone()
+    qf = qg.clone()
     pf[: pf_sum.shape[0]] = pf_sum
     qf[: qf_sum.shape[0]] = qf_sum
 
     transformer_edge_index = data["bus", "transformer", "bus"].edge_index
     from_bus = transformer_edge_index[0]
     pf_pred_transformer, qf_pred_transformer, _, _ = branch_powers_transformer
-    pf_sum = torch.bincount(from_bus, weights=pf_pred_transformer, device)
-    qf_sum = torch.bincount(from_bus, weights=qf_pred_transformer)
-    pf[: pf_sum.shape[0]] += pf_sum
-    qf[: qf_sum.shape[0]] += qf_sum
+    pf_sum = pf.scatter_reduce(0, from_bus, pf_pred_transformer, reduce='sum')
+    qf_sum = qf.scatter_reduce(0, from_bus, qf_pred_transformer, reduce='sum')
+    pf = pg.clone()
+    qf = qg.clone()
+    pf[: pf_sum.shape[0]] = pf[: pf_sum.shape[0]] + pf_sum
+    qf[: qf_sum.shape[0]] = qf[: qf_sum.shape[0]] + qf_sum
 
     # Shunt power injection
     shunt_edge_index = data["shunt", "shunt_link", "bus"].edge_index
     from_shunt = shunt_edge_index[0]
     to_bus = shunt_edge_index[1]
 
-    p_shunt = torch.zeros(out["bus"].shape[0])
-    q_shunt = torch.zeros(out["bus"].shape[0])
-    bs_sum = torch.bincount(to_bus, weights=data["shunt"].x[from_shunt, 0])
-    gs_sum = torch.bincount(to_bus, weights=data["shunt"].x[from_shunt, 1])
-
+    p_shunt = torch.zeros(out["bus"].shape[0], device=device)
+    q_shunt = torch.zeros(out["bus"].shape[0], device=device)
+    bs_sum = p_shunt.scatter_reduce(0, to_bus, data["shunt"].x[from_shunt, 0], reduce='sum')
+    gs_sum = q_shunt.scatter_reduce(0, to_bus, data["shunt"].x[from_shunt, 1], reduce='sum')
+    p_shunt = pg.clone()
+    qf = qg.clone()
     p_shunt[: gs_sum.shape[0]] = gs_sum * out["bus"][: bs_sum.shape[0], 1] ** 2
-    q_shunt[: bs_sum.shape[0]] = -bs_sum * out["bus"][: bs_sum.shape[0], 0] ** 2
+    qf[: bs_sum.shape[0]] = -bs_sum * out["bus"][: bs_sum.shape[0], 0] ** 2
 
     return loss(pg, qg, pf, qf, pd, qd, p_shunt, q_shunt)
 
