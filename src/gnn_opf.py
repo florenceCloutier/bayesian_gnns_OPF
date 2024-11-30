@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
-from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss, voltage_angle_loss, voltage_magnitude_loss, reactive_power_loss, real_power_loss
+from utils.loss import compute_branch_powers, enforce_bound_constraints, power_balance_loss, flow_loss, voltage_angle_loss
 from utils.test import test_va_values
 
 # Load the 14-bus OPFData FullTopology dataset training split and store it in the
@@ -61,16 +61,6 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
     return total_loss
 
 
-# def loss_constraints(out, data, branch_powers_ac_line, branch_powers_transformer):
-#     pb_loss = power_balance_loss(out, data, branch_powers_ac_line, branch_powers_transformer)
-#     branch_loss = flow_loss(data, branch_powers_ac_line, branch_powers_transformer)
-#     va_loss = voltage_angle_loss(out, data)
-#     vm_loss = voltage_magnitude_loss(out, data)
-#     pg_loss = real_power_loss(out, data)
-#     qg_loss = reactive_power_loss(out, data)
-
-#     return pb_loss + branch_loss + va_loss
-
 def learning_step(model, optimizer, data_loader, lambdas, constraints, rho, alpha, device):
     for data in data_loader:
         data = data.to(device)
@@ -122,19 +112,13 @@ model = to_hetero(Model(), data.metadata()).to(device)
 # initialize lambdas
 lambdas = {
     "voltage_angle": torch.tensor(0.0, requires_grad=False, device=device),
-    "real_power": torch.tensor(0.0, requires_grad=False, device=device),
-    "reactive_power": torch.tensor(0.0, requires_grad=False, device=device),
     "power_balance": torch.tensor(0.0, requires_grad=False, device=device),
     "flow": torch.tensor(0.0, requires_grad=False, device=device),
-    "voltage_magnitude": torch.tensor(0.0, requires_grad=False, device=device)
 }
 
 # constraints
 constraints = {
     "voltage_angle": voltage_angle_loss,
-    "voltage_magnitude": voltage_magnitude_loss,
-    "real_power": real_power_loss, 
-    "reactive_power": reactive_power_loss,
     "flow": flow_loss,
     "power_balance": power_balance_loss
 }
@@ -152,27 +136,4 @@ rho = 0.01
 for epoch in range(num_epochs):
     model.train()
     lambdas = learning_step(model, optimizer, training_loader, lambdas, constraints, rho, alpha=0.001, device=device)
-
-# for data in training_loader:
-#     optimizer.zero_grad()
-#     out = model(data.x_dict, data.edge_index_dict)
-
-#     print(out['bus'][:, 0].shape)
-#     print(data['bus'].y[:, 0].shape)
-#     # Bound constraints (6) and (7) from CANOS
-#     enforce_bound_constraints(out, data)
-    
-#     branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line')
-#     branch_powers_transformer = compute_branch_powers(out, data, 'transformer')
-
-    
-#     loss_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
-#     # #print(out['generator'].shape)
-
-
-#     loss_total = loss_supervised + 0.1*loss_constraint
-
-#     print(f"Loss: {loss_supervised}")
-#     loss_supervised.backward()
-#     optimizer.step()
 

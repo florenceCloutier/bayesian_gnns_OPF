@@ -217,30 +217,6 @@ def flow_loss(data, branch_powers_ac_line, branch_powers_transformer):
 
     return flow_loss_ac.mean(dim=0) + flow_loss_transformer.mean(dim=0)
 
-def voltage_magnitude_loss(out, data):
-    """
-    Compute violation degrees for voltage magnitude bounds at each bus.
-    Returns the violation degrees for buses with out-of-bound voltages.
-
-    Implements violation constraint v_2a
-    """
-
-    vmin = data['bus'].x[:, 2]
-    vmax = data['bus'].x[:, 3]
-    v_hat = out['bus'][:, 1] # voltage magnitude predictions
-
-    # Satisfiability degrees -> satisfied if sigma(x) <= 0 and smaller means more satisfiability
-    sigma_2a_L = vmin - v_hat # sigma(x) <= 0 => v_hat is bigger than min voltage
-    sigma_2a_R = v_hat - vmax # sigma(x) <= 0 => v_hat is smaller than max voltage
-
-    # using the satisfiability degrees we can now define the violation degrees
-    # for ineq constraints => v(x) = max(0, sigma(x))
-
-    violation_degrees = torch.mean(torch.relu(sigma_2a_L) + torch.relu(sigma_2a_R))
-
-    return violation_degrees
-
-
 def voltage_angle_loss(out, data):    
     """
     Check voltage angle constraints at each branch (Eq. 12)
@@ -279,54 +255,3 @@ def voltage_angle_loss(out, data):
     va_loss_transformer = max_loss_transformer + min_loss_transformer
 
     return va_loss_ac.mean(dim=0) + va_loss_transformer.mean(dim=0)
-
-def real_power_loss(out, data):
-    """
-    Compute violation degrees for active power generation limits at each generator.
-    Implements violation constraint v_3a.
-    """
-    p_hat = out['generator'][:, 0]
-    pmin = data['generator'].x[:, 2]
-    pmax = data['generator'].x[:, 3]
-
-    # Compute satisfiability degrees
-    sigma_L = pmin - p_hat  # sigma^L_3a: Violation of lower bound
-    sigma_R = p_hat - pmax  # sigma^R_3a: Violation of upper bound
-
-    # Compute violation degrees using ReLU (v_c(sigma) = max(0, sigma))
-    violation_L = torch.relu(sigma_L)  # Left violation degree
-    violation_R = torch.relu(sigma_R)  # Right violation degree
-
-    # Total violation degree for each generator
-    total_violation = violation_L + violation_R
-
-    # Average violation across all generators
-    avg_violation = total_violation.mean(dim=0)
-
-    return avg_violation
-
-
-def reactive_power_loss(out, data):
-    """
-    Compute violation degrees for reactive power generation limits at each generator.
-    Implements violation constraint v_3b
-    """
-    q_hat = out['generator'][:, 1]
-    qmin = data['generator'].x[:, 5]
-    qmax = data['generator'].x[:, 6]
-
-    # Compute satisfiability degrees
-    sigma_L = qmin - q_hat  # sigma^L_3a: Violation of lower bound
-    sigma_R = q_hat - qmax  # sigma^R_3a: Violation of upper bound
-
-    # Compute violation degrees using ReLU (v_c(sigma) = max(0, sigma))
-    violation_L = torch.relu(sigma_L)  # Left violation degree
-    violation_R = torch.relu(sigma_R)  # Right violation degree
-
-    # Total violation degree for each generator
-    total_violation = violation_L + violation_R
-
-    # Average violation across all generators
-    avg_violation = total_violation.mean(dim=0)
-
-    return avg_violation
