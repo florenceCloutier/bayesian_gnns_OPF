@@ -80,9 +80,9 @@ def learning_step(model, optimizer, data_loader, lambdas, constraints, rho, alph
         violation_degrees = {}
         L_constraints = 0.0
         for name, constraint_fn in constraints.items():
-            if name == "power_balance":
-                violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer)
-            elif name == "flow":
+            # if name == "power_balance":
+            #     violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer)
+            if name == "flow":
                 violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
             else:
                 violation = constraint_fn(out, data)
@@ -95,6 +95,7 @@ def learning_step(model, optimizer, data_loader, lambdas, constraints, rho, alph
         # Backprop and optimization
         total_loss.backward()
         optimizer.step()
+        print(f"Total loss: {total_loss}")
 
         # update lambdas
         for name in lambdas.keys():
@@ -112,7 +113,7 @@ model = to_hetero(Model(), data.metadata()).to(device)
 # initialize lambdas
 lambdas = {
     "voltage_angle": torch.tensor(0.0, requires_grad=False, device=device),
-    "power_balance": torch.tensor(0.0, requires_grad=False, device=device),
+    #"power_balance": torch.tensor(0.0, requires_grad=False, device=device),
     "flow": torch.tensor(0.0, requires_grad=False, device=device),
 }
 
@@ -120,7 +121,7 @@ lambdas = {
 constraints = {
     "voltage_angle": voltage_angle_loss,
     "flow": flow_loss,
-    "power_balance": power_balance_loss
+    #"power_balance": power_balance_loss
 }
 
 with torch.no_grad(): # Initialize lazy modules.
