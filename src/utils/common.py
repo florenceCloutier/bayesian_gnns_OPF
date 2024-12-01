@@ -99,7 +99,6 @@ def learning_step(model, optimizer, data_loader, eval_loader, lambdas, constrain
         l_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
 
         # constraint losses
-        violation_degrees = {}
         l_constraints = 0.0
         metrics = {}
         for name, constraint_fn in constraints.items():
@@ -112,7 +111,6 @@ def learning_step(model, optimizer, data_loader, eval_loader, lambdas, constrain
             else:
                 violation = constraint_fn(out, data)
                 metrics['voltage_angle_loss'] = violation
-            violation_degrees[name] = violation
             l_constraints += lambdas[name] * violation
         
         # Total loss
@@ -132,10 +130,26 @@ def learning_step(model, optimizer, data_loader, eval_loader, lambdas, constrain
         total_loss.backward()
         optimizer.step()
         lr_scheduler.step()
-        
-        # update lambdas
-        for name in lambdas.keys():
-            lambdas[name] = lambdas[name] + rho * violation_degrees[name].detach() # detach ensures no gradient tracking
+    
+    # compute the violation degrees
+    model.eval()
+    violation_degrees = {k: 0.0 for k in constraints.keys()}
+    for batch_idx, data in enumerate(data_loader):
+        data = data.to(device)
+        out = model(data.x_dict, data.edge_index_dict)
+        for name, constraint_fn in constraints.items():
+            if name == "power_balance":
+                violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
+            elif name == "flow":
+                violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
+            else:
+                violation = constraint_fn(out, data)
+            violation_degrees[name] += violation
+
+    # update lambdas
+    for name in lambdas.keys():
+        lambdas[name] = lambdas[name] + rho * (violation_degrees[name].detach()/len(data_loader)) # detach ensures no gradient tracking
+    
 
     return lambdas
 
