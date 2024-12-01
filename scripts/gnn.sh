@@ -11,4 +11,4 @@ module load libffi
 echo "activating env"
 source .venv/bin/activate
 
-python src/bayes_gnn_opf.py
+python src/gnn_opf.py

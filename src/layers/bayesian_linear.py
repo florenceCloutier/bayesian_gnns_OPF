@@ -79,13 +79,15 @@ class BayesianLinear(torch.nn.Module):
             self.rho_bias.data.normal_(mean=self.posterior_rho_init, std=0.1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        sigma_weight = torch.log1p(torch.exp(self.rho_weight))
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.rho_weight.to(device)
+        sigma_weight = torch.log1p(torch.exp(self.rho_weight)).to(device)
 
-        weight = self.mu_weight + (sigma_weight * self.eps_weight.data.normal_())
+        weight = self.mu_weight.to(device) + (sigma_weight * self.eps_weight.data.normal_().to(device))
 
         if self.mu_bias is not None:
-            sigma_bias = torch.log1p(torch.exp(self.rho_bias))
-            bias = self.mu_bias + (sigma_bias * self.eps_bias.data.normal_())
+            sigma_bias = torch.log1p(torch.exp(self.rho_bias)).to(device)
+            bias = self.mu_bias.to(device) + (sigma_bias * self.eps_bias.data.normal_().to(device))
         else:
             bias = None
 

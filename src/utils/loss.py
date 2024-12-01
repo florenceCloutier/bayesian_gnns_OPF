@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 """
 HeteroData Mapping to Raw OPF Data:
@@ -268,6 +269,42 @@ def voltage_angle_loss(out, data):
 
     return va_loss_ac.mean(dim=0) + va_loss_transformer.mean(dim=0)
 
+
+"""
+The loss_supervised function from the CANOS paper aggregates the L2 losses for the bus voltage,
+the generator power, and the branch power between the predicted values and the targets.
+"""
+def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer):
+    loss_generator = F.mse_loss(out['generator'], data['generator'].y)
+
+    loss_bus = F.mse_loss(out['bus'], data['bus'].y)
+
+    pf_pred_ac_line, qf_pred_ac_line, pt_pred_ac_line, qt_pred_ac_line = branch_powers_ac_line
+    pf_pred_transformer, qf_pred_transformer, pt_pred_transformer, qt_pred_transformer = branch_powers_transformer
+
+    assert 'edge_label' in data['bus', 'ac_line', 'bus'], "Edge label for AC lines is missing."
+    edge_label_ac_line = data['bus', 'ac_line', 'bus'].edge_label
+    pf_true_ac_line = edge_label_ac_line[:, 0]
+    qf_true_ac_line = edge_label_ac_line[:, 1]
+    pt_true_ac_line = edge_label_ac_line[:, 2]
+    qt_true_ac_line = edge_label_ac_line[:, 3]
+
+    assert 'edge_label' in data['bus', 'transformer', 'bus'], "Edge label for transformers is missing."
+    edge_label_transformer = data['bus', 'transformer', 'bus'].edge_label
+    pf_true_transformer = edge_label_transformer[:, 0]
+    qf_true_transformer = edge_label_transformer[:, 1]
+    pt_true_transformer = edge_label_transformer[:, 2]
+    qt_true_transformer = edge_label_transformer[:, 3]
+
+    loss_pf = F.mse_loss(pf_pred_ac_line, pf_true_ac_line) + F.mse_loss(pf_pred_transformer, pf_true_transformer)
+    loss_qf = F.mse_loss(qf_pred_ac_line, qf_true_ac_line) + F.mse_loss(qf_pred_transformer, qf_true_transformer)
+    loss_pt = F.mse_loss(pt_pred_ac_line, pt_true_ac_line) + F.mse_loss(pt_pred_transformer, pt_true_transformer)
+    loss_qt = F.mse_loss(qt_pred_ac_line, qt_true_ac_line) + F.mse_loss(qt_pred_transformer, qt_true_transformer)
+
+    total_loss = loss_generator + loss_bus + loss_pf + loss_qf + loss_pt + loss_qt
+
+    return total_loss
+
 def cost(out, data):
     """
     Function to compute total generator costs.
@@ -277,3 +314,15 @@ def cost(out, data):
     cost_linear = data["generator"].x[:, 9]
     cost_offset = data["generator"].x[:, 10]
     return cost_squared * torch.square(pg) + cost_linear * pg + cost_offset
+
+
+# Custom learning rate schedule function from CANOS paper
+def learning_rate_schedule(step, warmup_steps, initial_learning_rate, peak_learning_rate, transition_steps, decay_rate, final_learning_rate):
+    if step < warmup_steps:
+        # Linear warm-up
+        return initial_learning_rate + step * (peak_learning_rate - initial_learning_rate) / warmup_steps
+    else:
+        # Exponential decay
+        decay_steps = (step - warmup_steps) // transition_steps
+        decayed_lr = peak_learning_rate * (decay_rate ** decay_steps)
+        return max(decayed_lr, final_learning_rate)
