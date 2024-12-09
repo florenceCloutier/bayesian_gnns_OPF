@@ -1,7 +1,6 @@
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import to_hetero
-import pytorch_lightning as pl
 
 from layers.bayesian_graph_conv import BayesianGraphConv
 
@@ -48,7 +47,6 @@ class HeteroBayesianGNN(torch.nn.Module):
         return self.model(*args, **kwargs)
     
     def kl_loss(self):
-        # Recursively collect KL loss from all BayesianGraphConv layers
         kl_loss = 0
         for module in self.model.modules():
             if isinstance(module, BayesianGraphConv):
