@@ -36,8 +36,7 @@ def learning_step(model, optimizer, data_loader, eval_loader, lambdas, constrain
         optimizer.zero_grad()
 
         # forward pass
-        out = model(data.x_dict, data.edge_index_dict)
-        # out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
+        out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
 
         # Bound constraints (6) and (7) from CANOS
         enforce_bound_constraints(out, data)

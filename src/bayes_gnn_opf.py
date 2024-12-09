@@ -49,5 +49,5 @@ def main(cfg: DictConfig):
                      epochs=cfg.epochs)
 
 if __name__ == "__main__":
-    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="bayes_gnn_all_metrics")
+    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="bayes_gnn")
     main()

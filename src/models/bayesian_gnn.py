@@ -23,7 +23,7 @@ class BayesianGNN(torch.nn.Module):
 
         self.convs.append(BayesianGraphConv(hidden_channels, out_channels))
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_attr_dict=None):
         for i in range(len(self.convs) - 1):
             conv = self.convs[i]
             x = conv(x, edge_index)

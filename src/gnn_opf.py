@@ -17,7 +17,7 @@ class Model(torch.nn.Module):
         self.conv1 = GraphConv(-1, 16)
         self.conv2 = GraphConv(16, 2)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_attr_dict=None):
         x = self.conv1(x, edge_index).relu()
         x = self.conv2(x, edge_index)
         return x
@@ -63,5 +63,5 @@ def main(cfg: DictConfig):
 
    
 if __name__ == "__main__":
-    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="vanilla_gnn_all_metrics")
+    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="vanilla_gnn")
     main()
