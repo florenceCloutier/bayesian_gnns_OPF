@@ -23,7 +23,7 @@ class BayesianGNN(torch.nn.Module):
 
         self.convs.append(BayesianGraphConv(hidden_channels, out_channels))
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_attr_dict=None):
         for i in range(len(self.convs) - 1):
             conv = self.convs[i]
             x = conv(x, edge_index)
@@ -47,7 +47,6 @@ class HeteroBayesianGNN(torch.nn.Module):
         return self.model(*args, **kwargs)
     
     def kl_loss(self):
-        # Recursively collect KL loss from all BayesianGraphConv layers
         kl_loss = 0
         for module in self.model.modules():
             if isinstance(module, BayesianGraphConv):

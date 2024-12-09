@@ -1,14 +1,14 @@
 import torch
-import wandb
 import hydra
+import wandb
 
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
-from torch_geometric.loader import DataLoader
 from omegaconf import DictConfig
 
 from utils.common import train_eval_model
-from utils.loss import power_balance_loss, flow_loss, voltage_angle_loss
+from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss
+from models.CANOS import CANOS
 
 # A simple model to predict the generator active and reactive power outputs.
 class Model(torch.nn.Module):
@@ -17,7 +17,7 @@ class Model(torch.nn.Module):
         self.conv1 = GraphConv(-1, 16)
         self.conv2 = GraphConv(16, 2)
 
-    def forward(self, x, edge_index, edge_attr_dict=None):
+    def forward(self, x, edge_index):
         x = self.conv1(x, edge_index).relu()
         x = self.conv2(x, edge_index)
         return x
@@ -27,12 +27,12 @@ def main(cfg: DictConfig):
     # Load the 14-bus OPFData FullTopology dataset training split and store it in the
     # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
     train_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split='train')
-    eval_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split='val')
-    # Batch and shuffle.
-    training_loader = DataLoader(train_ds, batch_size=4, shuffle=True)
-    eval_loader = DataLoader(eval_ds, batch_size=4, shuffle=True)
-
+    eval_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split="val")
+    
+    # Initialise the model.
+    # data.metadata() here refers to the PyG graph metadata, not the OPFData metadata.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    data = train_ds[0]
 
     # initialize lambdas
     lambdas = {
@@ -47,21 +47,11 @@ def main(cfg: DictConfig):
         "flow": flow_loss,
         "power_balance": power_balance_loss
     }
-    
-    train_data = train_ds[0]
-    model = to_hetero(Model(), train_data.metadata()).to(device)
-    
-    train_eval_model(model, 
-                     training_loader, 
-                     eval_loader, 
-                     constraints, 
-                     lambdas, 
-                     device, 
-                     rho=cfg.rho, 
-                     train_log_interval=cfg.train_log_interval, 
-                     epochs=cfg.epochs)
 
-   
+    model = CANOS(in_channels=-1, hidden_size=128, out_channels=2, num_message_passing_steps=2, metadata=data.metadata()).to(device)
+    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device)
+
+
 if __name__ == "__main__":
-    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="vanilla_gnn")
+    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="canos_gnn")
     main()
