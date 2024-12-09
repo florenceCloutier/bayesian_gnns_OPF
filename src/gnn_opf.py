@@ -1,13 +1,14 @@
 import torch
-import hydra
 import wandb
+import hydra
 
 from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
+from torch_geometric.loader import DataLoader
 from omegaconf import DictConfig
 
 from utils.common import train_eval_model
-from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss
+from utils.loss import power_balance_loss, flow_loss, voltage_angle_loss
 
 # A simple model to predict the generator active and reactive power outputs.
 class Model(torch.nn.Module):
@@ -26,12 +27,12 @@ def main(cfg: DictConfig):
     # Load the 14-bus OPFData FullTopology dataset training split and store it in the
     # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
     train_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split='train')
-    eval_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split="val")
-    
-    # Initialise the model.
-    # data.metadata() here refers to the PyG graph metadata, not the OPFData metadata.
+    eval_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split='val')
+    # Batch and shuffle.
+    training_loader = DataLoader(train_ds, batch_size=4, shuffle=True)
+    eval_loader = DataLoader(eval_ds, batch_size=4, shuffle=True)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = train_ds[0]
 
     # initialize lambdas
     lambdas = {
@@ -46,11 +47,21 @@ def main(cfg: DictConfig):
         "flow": flow_loss,
         "power_balance": power_balance_loss
     }
+    
+    train_data = train_ds[0]
+    model = to_hetero(Model(), train_data.metadata()).to(device)
+    
+    train_eval_model(model, 
+                     training_loader, 
+                     eval_loader, 
+                     constraints, 
+                     lambdas, 
+                     device, 
+                     rho=cfg.rho, 
+                     train_log_interval=cfg.train_log_interval, 
+                     epochs=cfg.epochs)
 
-    model = to_hetero(Model(), data.metadata()).to(device)
-    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device)
-
-
+   
 if __name__ == "__main__":
-    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="vanilla_gnn")
+    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="vanilla_gnn_all_metrics")
     main()

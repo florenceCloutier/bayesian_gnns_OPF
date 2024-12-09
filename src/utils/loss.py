@@ -269,7 +269,6 @@ def voltage_angle_loss(out, data):
 
     return va_loss_ac.mean(dim=0) + va_loss_transformer.mean(dim=0)
 
-
 """
 The loss_supervised function from the CANOS paper aggregates the L2 losses for the bus voltage,
 the generator power, and the branch power between the predicted values and the targets.
@@ -304,6 +303,7 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
     total_loss = loss_generator + loss_bus + loss_pf + loss_qf + loss_pt + loss_qt
 
     return total_loss
+
 
 def cost(out, data):
     """
