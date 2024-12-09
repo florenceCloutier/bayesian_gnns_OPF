@@ -3,6 +3,7 @@ import wandb
 
 from utils.loss import enforce_bound_constraints, compute_branch_powers, compute_loss_supervised, cost, BRANCH_FEATURE_INDICES
 from utils.metrics import compute_metrics
+from models.bayesian_gnn import HeteroBayesianGNN
 
 
 """
@@ -63,6 +64,9 @@ def learning_step(model, optimizer, data_loader, eval_loader, lambdas, constrain
         
         # Total loss
         total_loss = L_supervised + 0.1 * L_constraints
+
+        if isinstance(model, HeteroBayesianGNN):
+            total_loss += model.kl_loss()
         
         # Log metrics at intervals
         if batch_idx % train_log_interval == 0:

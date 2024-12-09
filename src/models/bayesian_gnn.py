@@ -28,7 +28,6 @@ class BayesianGNN(torch.nn.Module):
             conv = self.convs[i]
             x = conv(x, edge_index)
             x = F.relu(x)
-            x = F.dropout(x, training=self.training)
 
         x = self.convs[-1](x, edge_index)
         return x
