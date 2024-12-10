@@ -17,8 +17,8 @@ def main(cfg: DictConfig):
     train_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split='train')
     eval_ds = OPFDataset(cfg.data_dir, case_name=cfg.case_name, split='val')
     # Batch and shuffle.
-    training_loader = DataLoader(train_ds, batch_size=4, shuffle=True)
-    eval_loader = DataLoader(eval_ds, batch_size=4, shuffle=True)
+    training_loader = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True)
+    eval_loader = DataLoader(eval_ds, batch_size=cfg.batch_size, shuffle=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
