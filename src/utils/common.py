@@ -18,7 +18,8 @@ def train_eval_model(model,
                 device,
                 rho=0.0001,
                 train_log_interval=100,
-                epochs=100
+                epochs=100,
+                batch_size=4
     ):
     
     with torch.no_grad(): # Initialize lazy modules.
@@ -29,9 +30,9 @@ def train_eval_model(model,
     # training loop
     for _ in range(epochs):
         model.train()
-        lambdas = learning_step(model, optimizer, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
+        lambdas = learning_step(model, optimizer, batch_size, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
 
-def learning_step(model, optimizer, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
+def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
         optimizer.zero_grad()
@@ -66,7 +67,7 @@ def learning_step(model, optimizer, data_loader, eval_loader, lambdas, constrain
         total_loss = L_supervised + 0.1 * L_constraints
 
         if isinstance(model, HeteroBayesianGNN):
-            total_loss += model.kl_loss()
+            total_loss += (model.kl_loss() / batch_size)
         
         # Log metrics at intervals
         if batch_idx % train_log_interval == 0:

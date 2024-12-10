@@ -46,7 +46,8 @@ def main(cfg: DictConfig):
                      device,
                      rho=cfg.rho,
                      train_log_interval=cfg.train_log_interval, 
-                     epochs=cfg.epochs)
+                     epochs=cfg.epochs,
+                     batch_size=cfg.batch_size)
 
 if __name__ == "__main__":
     wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="bayes_gnn")
