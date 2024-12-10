@@ -20,7 +20,8 @@ def train_eval_model(model,
                 train_log_interval=100,
                 epochs=100,
                 batch_size=4,
-                num_samples=10
+                num_samples=10,
+                approx_method="variational_inference"
     ):
     
     with torch.no_grad(): # Initialize lazy modules.
@@ -31,9 +32,9 @@ def train_eval_model(model,
     # training loop
     for _ in range(epochs):
         model.train()
-        lambdas = learning_step(model, optimizer, batch_size, num_samples, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
+        lambdas = learning_step(model, optimizer, batch_size, num_samples, approx_method, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
 
-def learning_step(model, optimizer, batch_size, num_samples, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
+def learning_step(model, optimizer, batch_size, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
         optimizer.zero_grad()
@@ -67,7 +68,9 @@ def learning_step(model, optimizer, batch_size, num_samples, data_loader, eval_l
         # Total loss
         total_loss = L_supervised + 0.1 * L_constraints
 
-        if isinstance(model, HeteroBayesianGNN):
+        # if isinstance(model, HeteroBayesianGNN):
+        #     total_loss += (model.kl_loss() / batch_size)
+        if approx_method == "variational_inference":
             total_loss += (model.kl_loss() / batch_size)
         
         # Log metrics at intervals
@@ -76,7 +79,7 @@ def learning_step(model, optimizer, batch_size, num_samples, data_loader, eval_l
             metrics['train_loss'] = total_loss.item()
             metrics['training_cost'] = cost(out, data).mean().item()
             
-            eval_metrics = evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples)
+            eval_metrics = evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples, approx_method)
             metrics.update(eval_metrics)
             wandb.log(metrics)
 
@@ -92,11 +95,7 @@ def learning_step(model, optimizer, batch_size, num_samples, data_loader, eval_l
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
 
-        #out = model(data.x_dict, data.edge_index_dict)
-        if isinstance(model, HeteroBayesianGNN):
-            out, predictive_variance = monte_carlo_integration(model, data, num_samples)
-        else:
-            out = model(data.x_dict, data.edge_index_dict)
+        out = model(data.x_dict, data.edge_index_dict)
 
         for name, constraint_fn in constraints.items():
             if name == "power_balance":
@@ -114,7 +113,7 @@ def learning_step(model, optimizer, batch_size, num_samples, data_loader, eval_l
     return lambdas
 
 
-def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples):
+def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples, approx_method):
     model.eval()
     metrics = [] # Logging metrics
 
@@ -122,7 +121,7 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
         for data in eval_loader:
             data = data.to(device)
           
-            if isinstance(model, HeteroBayesianGNN):
+            if approx_method == "variational_inference":
                 out, predictive_variance = monte_carlo_integration(model, data, num_samples)
             else:
                 out = model(data.x_dict, data.edge_index_dict)

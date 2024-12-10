@@ -49,7 +49,7 @@ def main(cfg: DictConfig):
     }
 
     model = CANOS(in_channels=-1, hidden_size=128, out_channels=2, num_message_passing_steps=2, metadata=data.metadata()).to(device)
-    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device, batch_size=cfg.batch_size, num_samples=cfg.num_samples)
+    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device, batch_size=cfg.batch_size, num_samples=cfg.num_samples, approx_method=cfg.approx_method)
 
 
 if __name__ == "__main__":
