@@ -60,7 +60,8 @@ def main(cfg: DictConfig):
                      rho=cfg.rho, 
                      train_log_interval=cfg.train_log_interval, 
                      epochs=cfg.epochs,
-                     batch_size=cfg.batch_size)
+                     batch_size=cfg.batch_size,
+                     num_samples=cfg.num_samples)
 
    
 if __name__ == "__main__":

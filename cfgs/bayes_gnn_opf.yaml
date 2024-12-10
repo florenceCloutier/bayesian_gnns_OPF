@@ -17,6 +17,7 @@ total_steps: 600000
 epochs: 100
 batch_size: 4
 kl_weight: 0.1
+num_samples: 50
 
 # Logging
 train_log_interval: 4

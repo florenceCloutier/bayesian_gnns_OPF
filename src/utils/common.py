@@ -19,7 +19,8 @@ def train_eval_model(model,
                 rho=0.0001,
                 train_log_interval=100,
                 epochs=100,
-                batch_size=4
+                batch_size=4,
+                num_samples=10
     ):
     
     with torch.no_grad(): # Initialize lazy modules.
@@ -30,9 +31,9 @@ def train_eval_model(model,
     # training loop
     for _ in range(epochs):
         model.train()
-        lambdas = learning_step(model, optimizer, batch_size, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
+        lambdas = learning_step(model, optimizer, batch_size, num_samples, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
 
-def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
+def learning_step(model, optimizer, batch_size, num_samples, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
         optimizer.zero_grad()
@@ -75,7 +76,7 @@ def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambda
             metrics['train_loss'] = total_loss.item()
             metrics['training_cost'] = cost(out, data).mean().item()
             
-            eval_metrics = evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device)
+            eval_metrics = evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples)
             metrics.update(eval_metrics)
             wandb.log(metrics)
 
@@ -90,7 +91,13 @@ def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambda
     violation_degrees = {k: 0.0 for k in constraints.keys()}
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
-        out = model(data.x_dict, data.edge_index_dict)
+
+        #out = model(data.x_dict, data.edge_index_dict)
+        if isinstance(model, HeteroBayesianGNN):
+            out, predictive_variance = monte_carlo_integration(model, data, num_samples)
+        else:
+            out = model(data.x_dict, data.edge_index_dict)
+
         for name, constraint_fn in constraints.items():
             if name == "power_balance":
                 violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
@@ -107,14 +114,19 @@ def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambda
     return lambdas
 
 
-def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device):
+def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples):
     model.eval()
     metrics = [] # Logging metrics
 
     with torch.no_grad():
         for data in eval_loader:
             data = data.to(device)
-            out = model(data.x_dict, data.edge_index_dict)
+          
+            if isinstance(model, HeteroBayesianGNN):
+                out, predictive_variance = monte_carlo_integration(model, data, num_samples)
+            else:
+                out = model(data.x_dict, data.edge_index_dict)
+
             enforce_bound_constraints(out, data)
             
             branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
@@ -152,3 +164,16 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device):
             
             
 
+def monte_carlo_integration(model, data, num_samples=50):
+    predictions = []
+
+    for _ in range(num_samples):
+        preds = model(data.x_dict, data.edge_index_dict)
+        predictions.append(preds)
+    
+    aggregated_out = {key : torch.stack([pred[key] for pred in predictions]).mean(dim=0)
+                      for key in predictions[0]}
+    predictive_variance = {key: torch.stack([pred[key] for pred in predictions]).var(dim=0)
+                           for key in predictions[0]}
+    
+    return aggregated_out, predictive_variance
