@@ -57,8 +57,9 @@ def main(cfg: DictConfig):
                      constraints, 
                      lambdas, 
                      device, 
+                     cfg.checkpoint_path,
                      rho=cfg.rho, 
-                     train_log_interval=cfg.train_log_interval, 
+                     train_log_interval=cfg.train_log_interval,
                      epochs=cfg.epochs,
                      batch_size=cfg.batch_size)
 

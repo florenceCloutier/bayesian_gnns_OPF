@@ -20,3 +20,4 @@ kl_weight: 0.1
 
 # Logging
 train_log_interval: 4
+checkpoint_path: "vanilla_gnn_model.pt"

@@ -16,8 +16,10 @@ def train_eval_model(model,
                 constraints,
                 lambdas,
                 device,
+                checkpoint_path,
                 rho=0.0001,
                 train_log_interval=100,
+                checkpoint_interval=10000,
                 epochs=100,
                 batch_size=4
     ):
@@ -30,9 +32,9 @@ def train_eval_model(model,
     # training loop
     for _ in range(epochs):
         model.train()
-        lambdas = learning_step(model, optimizer, batch_size, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
+        lambdas = learning_step(model, optimizer, batch_size, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, checkpoint_interval, checkpoint_path, device=device) #lr_scheduler, 
 
-def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
+def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, checkpoint_interval, checkpoint_path, device): # lr_scheduler, 
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
         optimizer.zero_grad()
@@ -78,6 +80,9 @@ def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambda
             eval_metrics = evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device)
             metrics.update(eval_metrics)
             wandb.log(metrics)
+        
+        if batch_idx % checkpoint_interval == 0:
+            torch.save(model, checkpoint_path)
 
         # Backprop and optimization
         total_loss.backward()
