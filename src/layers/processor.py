@@ -10,13 +10,19 @@ from layers.interaction_network import InteractionNetworkBlock
 class ProcessorModule(nn.Module):
     """Complete processor with multiple heterogeneous IN blocks"""
 
-    def __init__(self, hidden_size: int, num_message_passing_steps: int, to_hetero: Callable, metadata: Metadata):
+    def __init__(self, 
+                 hidden_size: int, 
+                 num_message_passing_steps: int, 
+                 to_hetero: Callable, 
+                 metadata: Metadata,
+                 dropout_rate: float = 0.5,
+                 use_dropout: bool = False):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.num_message_passing_steps = num_message_passing_steps
 
-        self.blocks = nn.ModuleList([InteractionNetworkBlock(hidden_size) for _ in range(num_message_passing_steps)])
+        self.blocks = nn.ModuleList([InteractionNetworkBlock(hidden_size, dropout_rate, use_dropout) for _ in range(num_message_passing_steps)])
 
         self.blocks = nn.ModuleList([to_hetero(block, metadata) for block in self.blocks])
 

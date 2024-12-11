@@ -8,14 +8,20 @@ from typing import Union
 
 
 class RelationalModel(nn.Module):
-    def __init__(self, in_size: int, hidden_size: int):
+    def __init__(self, 
+                 in_size: int, 
+                 hidden_size: int,
+                 dropout_rate: float = 0.5,
+                 use_dropout: bool = False):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(hidden_size),
         )
 
@@ -24,14 +30,20 @@ class RelationalModel(nn.Module):
 
 
 class ObjectModel(nn.Module):
-    def __init__(self, in_size: int, hidden_size: int):
+    def __init__(self, 
+                 in_size: int, 
+                 hidden_size: int,
+                 dropout_rate: float = 0.5,
+                 use_dropout: bool = False):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(hidden_size),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(hidden_size),
         )
 
@@ -44,13 +56,13 @@ class InteractionNetworkBlock(MessagePassing):
     IN Block based on the paper "Interaction Networks for Learning about Objects, Relations and Physics"
     """
 
-    def __init__(self, hidden_size: int):
+    def __init__(self, hidden_size: int, dropout_rate: float = 0.5, use_dropout: bool = False):
         super().__init__(aggr="add")
 
         self.hidden_size = hidden_size
 
-        self.edge_mlp = RelationalModel(hidden_size * 3, hidden_size)
-        self.node_mlp = ObjectModel(hidden_size * 2, hidden_size)
+        self.edge_mlp = RelationalModel(hidden_size * 3, hidden_size, dropout_rate, use_dropout)
+        self.node_mlp = ObjectModel(hidden_size * 2, hidden_size, dropout_rate, use_dropout)
         self.updated_edge_attr = Tensor()
 
         self.reset_parameters()

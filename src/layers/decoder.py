@@ -13,7 +13,11 @@ class GNDecoder(MessagePassing):
     bus voltage and generator power.
     """
 
-    def __init__(self, hidden_size: int, out_channels: int):
+    def __init__(self, 
+                 hidden_size: int, 
+                 out_channels: int,
+                 dropout_rate: float = 0.5,
+                 use_dropout: bool = False):
         super().__init__(aggr="add")
 
         self.out_channels = out_channels
@@ -22,17 +26,21 @@ class GNDecoder(MessagePassing):
         self.edge_mlp = nn.Sequential(
             Linear(hidden_size, 256),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(256),
             Linear(256, 256, bias=False),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(256),
         )
         self.node_mlp = nn.Sequential(
             Linear(hidden_size+256, 256),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(256),
             Linear(256, 256, bias=False),
             nn.ReLU(),
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             nn.LayerNorm(256),
         )
         self.output_layer = Linear(256, self.out_channels)

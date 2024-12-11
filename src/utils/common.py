@@ -68,8 +68,6 @@ def learning_step(model, optimizer, batch_size, num_samples, approx_method, data
         # Total loss
         total_loss = L_supervised + 0.1 * L_constraints
 
-        # if isinstance(model, HeteroBayesianGNN):
-        #     total_loss += (model.kl_loss() / batch_size)
         if approx_method == "variational_inference":
             total_loss += (model.kl_loss() / batch_size)
         
@@ -115,7 +113,7 @@ def learning_step(model, optimizer, batch_size, num_samples, approx_method, data
 
 def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples, approx_method):
     model.eval()
-    metrics = [] # Logging metrics
+    batch_metrics = [] # Logging metrics
 
     with torch.no_grad():
         for data in eval_loader:
@@ -123,8 +121,13 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
           
             if approx_method == "variational_inference":
                 out, predictive_variance = monte_carlo_integration(model, data, num_samples)
+            elif approx_method == "MC_dropout":
+                model.train()
+                out, predictive_variance = monte_carlo_integration(model, data, num_samples)
+                model.eval()
             else:
                 out = model(data.x_dict, data.edge_index_dict)
+                predictive_variance = None
 
             enforce_bound_constraints(out, data)
             
@@ -159,7 +162,17 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
             metrics['val_loss'] = total_loss.item()
             metrics['val_cost'] = cost(out, data).mean().item()
 
-    return metrics
+            if predictive_variance:
+                metrics.update({
+                    f'predictive_variance_{key}': predictive_variance[key].mean().item()
+                    for key in predictive_variance
+                })
+            
+            batch_metrics.append(metrics)
+
+    aggregated_metrics = {key: torch.tensor([m[key] for m in batch_metrics]).mean().item() for key in batch_metrics[0]}
+
+    return aggregated_metrics
             
             
 

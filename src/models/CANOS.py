@@ -97,12 +97,25 @@ class CANOS(torch.nn.Module):
         out_channels: int,
         num_message_passing_steps: int,
         metadata: Metadata,
+        dropout_rate: float = 0.5,
+        use_dropout: bool = False
     ):
         super().__init__()
 
-        self.encoder = to_hetero_with_edges(GNEncoder(in_channels=in_channels, hidden_size=hidden_size), metadata)
-        self.processor = ProcessorModule(hidden_size=hidden_size, num_message_passing_steps=num_message_passing_steps, to_hetero=to_hetero_with_edges, metadata=metadata)
-        self.decoder = to_hetero_with_edges(GNDecoder(hidden_size=hidden_size, out_channels=out_channels), metadata)
+        self.encoder = to_hetero_with_edges(GNEncoder(in_channels=in_channels, 
+                                                      hidden_size=hidden_size, 
+                                                      dropout_rate=dropout_rate, 
+                                                      use_dropout=use_dropout), metadata)
+        self.processor = ProcessorModule(hidden_size=hidden_size, 
+                                         num_message_passing_steps=num_message_passing_steps, 
+                                         to_hetero=to_hetero_with_edges, 
+                                         metadata=metadata,
+                                         dropout_rate=dropout_rate,
+                                         use_dropout=use_dropout)
+        self.decoder = to_hetero_with_edges(GNDecoder(hidden_size=hidden_size, 
+                                                      out_channels=out_channels,
+                                                      dropout_rate=dropout_rate,
+                                                      use_dropout=use_dropout), metadata)
 
     def forward(
         self, x_dict: Dict[str, Tensor], edge_index_dict: Dict[str, Tensor], edge_attr_dict: Dict[str, Tensor]
