@@ -35,7 +35,6 @@ def train_eval_model(model,
 
 def learning_step(model, optimizer, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
     batch_size = data_loader.batch_size
-    dataset_size = len(data_loader.dataset)
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
         optimizer.zero_grad()
@@ -70,7 +69,7 @@ def learning_step(model, optimizer, num_samples, approx_method, data_loader, eva
         total_loss = L_supervised + 0.1 * L_constraints
 
         if approx_method == "variational_inference":
-            total_loss += (model.kl_loss() * (batch_size / dataset_size))
+            total_loss += (model.kl_loss() / batch_size)
         
         # Log metrics at intervals
         if batch_idx % train_log_interval == 0:
