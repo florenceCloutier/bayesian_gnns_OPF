@@ -37,7 +37,7 @@ def main(cfg: DictConfig):
     }
     
     train_data = train_ds[0]
-    model = custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata())
+    model = custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata()).to(device)
     train_eval_model(model, 
                      training_loader, 
                      eval_loader, 
@@ -45,9 +45,9 @@ def main(cfg: DictConfig):
                      lambdas, 
                      device,
                      rho=cfg.rho,
+                     beta=cfg.beta,
                      train_log_interval=cfg.train_log_interval, 
                      epochs=cfg.epochs,
-                     batch_size=cfg.batch_size,
                      num_samples=cfg.num_samples,
                      approx_method=cfg.approx_method)
 

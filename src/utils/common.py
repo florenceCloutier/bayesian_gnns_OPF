@@ -17,9 +17,9 @@ def train_eval_model(model,
                 lambdas,
                 device,
                 rho=0.0001,
+                beta=0.001,
                 train_log_interval=100,
                 epochs=100,
-                batch_size=4,
                 num_samples=10,
                 approx_method="variational_inference"
     ):
@@ -32,9 +32,10 @@ def train_eval_model(model,
     # training loop
     for _ in range(epochs):
         model.train()
-        lambdas = learning_step(model, optimizer, batch_size, num_samples, approx_method, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
+        lambdas = learning_step(model, optimizer, num_samples, approx_method, training_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, device=device) #lr_scheduler, 
 
-def learning_step(model, optimizer, batch_size, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
+def learning_step(model, optimizer, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, device): # lr_scheduler, 
+    batch_size = data_loader.batch_size
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
         optimizer.zero_grad()
@@ -68,16 +69,20 @@ def learning_step(model, optimizer, batch_size, num_samples, approx_method, data
         # Total loss
         total_loss = L_supervised + 0.1 * L_constraints
 
+        kl_loss = None
         if approx_method == "variational_inference":
-            total_loss += (model.kl_loss() / batch_size)
+            kl_loss = model.kl_loss()*beta / batch_size
+            total_loss += kl_loss
         
         # Log metrics at intervals
         if batch_idx % train_log_interval == 0:
             metrics = compute_metrics(data, branch_powers_ac_line, branch_powers_transformer, optimizer, violation_degrees, "train")
             metrics['train_loss'] = total_loss.item()
             metrics['training_cost'] = cost(out, data).mean().item()
+            if kl_loss is not None:
+                metrics['val_kl_loss'] = kl_loss.item()
             
-            eval_metrics = evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples, approx_method)
+            eval_metrics = evaluate_model(model, eval_loader, constraints, beta, lambdas, optimizer, device, num_samples, approx_method)
             metrics.update(eval_metrics)
             wandb.log(metrics)
 
@@ -111,10 +116,11 @@ def learning_step(model, optimizer, batch_size, num_samples, approx_method, data
     return lambdas
 
 
-def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, num_samples, approx_method):
+def evaluate_model(model, eval_loader, constraints, beta, lambdas, optimizer, device, num_samples, approx_method):
     model.eval()
     batch_metrics = [] # Logging metrics
 
+    batch_size = eval_loader.batch_size
     with torch.no_grad():
         for data in eval_loader:
             data = data.to(device)
@@ -123,13 +129,13 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
           
             if approx_method == "variational_inference":
                 out, predictive_variance = monte_carlo_integration(model, data, num_samples)
-                kl_loss = model.kl_loss() / len(eval_loader.dataset)
+                kl_loss = model.kl_loss()*beta / batch_size
             elif approx_method == "MC_dropout":
                 model.train()
                 out, predictive_variance = monte_carlo_integration(model, data, num_samples)
                 model.eval()
             else:
-                out = model(data.x_dict, data.edge_index_dict)
+                out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
                 predictive_variance = None
 
             enforce_bound_constraints(out, data)
@@ -137,7 +143,7 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
             branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
             branch_powers_transformer = compute_branch_powers(out, data, 'transformer', device)
             
-            # Compute supervised and KL loss
+            # Compute supervised
             l_supervised = compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_transformer)
             
             # constraint losses
@@ -159,6 +165,8 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
         
             # Total loss
             total_loss = l_supervised + 0.1 * l_constraints
+            if kl_loss:
+                total_loss += kl_loss
             
             # Compute metrics
             metrics = compute_metrics(data, branch_powers_ac_line, branch_powers_transformer, optimizer, violation_degrees, "val")
