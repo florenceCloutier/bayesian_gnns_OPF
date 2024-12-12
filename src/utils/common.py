@@ -17,6 +17,7 @@ def train_eval_model(model,
                 lambdas,
                 device,
                 rho=0.0001,
+                beta=0.001,
                 train_log_interval=100,
                 epochs=100,
                 num_samples=10,
@@ -31,9 +32,9 @@ def train_eval_model(model,
     # training loop
     for _ in range(epochs):
         model.train()
-        lambdas = learning_step(model, optimizer, num_samples, approx_method, training_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device=device) #lr_scheduler, 
+        lambdas = learning_step(model, optimizer, num_samples, approx_method, training_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, device=device) #lr_scheduler, 
 
-def learning_step(model, optimizer, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, train_log_interval, device): # lr_scheduler, 
+def learning_step(model, optimizer, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, device): # lr_scheduler, 
     batch_size = data_loader.batch_size
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
@@ -69,7 +70,7 @@ def learning_step(model, optimizer, num_samples, approx_method, data_loader, eva
         total_loss = L_supervised + 0.1 * L_constraints
 
         if approx_method == "variational_inference":
-            total_loss += (model.kl_loss() / batch_size)
+            total_loss += (model.kl_loss()*beta / batch_size)
         
         # Log metrics at intervals
         if batch_idx % train_log_interval == 0:

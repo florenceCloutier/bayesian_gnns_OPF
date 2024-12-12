@@ -57,6 +57,10 @@ def main(cfg: DictConfig):
         constraints,
         lambdas,
         device,
+        rho=cfg.rho,
+        beta=cfg.beta,
+        train_log_interval=cfg.train_log_interval, 
+        epochs=cfg.epochs,
         num_samples=cfg.num_samples,
         approx_method=cfg.approx_method,
     )

@@ -7,10 +7,11 @@ hidden_size: 128
 num_message_passing_steps: 2
 
 # Method of bayesian approx
-approx_method: "vanilla_gnn"
+approx_method: "variational_inference"
 
 # Training hyperparams
 rho: 0.0001
+beta: 0.0005
 initial_learning_rate: 0.0
 peak_learning_rate: 2e-4
 final_learning_rate: 5e-6
