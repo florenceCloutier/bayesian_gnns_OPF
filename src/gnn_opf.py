@@ -7,7 +7,7 @@ from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
 from omegaconf import DictConfig
 
-from utils.common import train_eval_model
+from utils.common import train_eval_models
 from utils.loss import power_balance_loss, flow_loss, voltage_angle_loss
 
 # A simple model to predict the generator active and reactive power outputs.
@@ -49,9 +49,15 @@ def main(cfg: DictConfig):
     }
     
     train_data = train_ds[0]
-    model = to_hetero(Model(), train_data.metadata()).to(device)
     
-    train_eval_model(model, 
+    # Initialize models for ensemble method (if no ensemble method, the is only 1 model)
+    models = []
+    seed_start = 0 
+    for i in range(cfg.num_models_ensemble_method):
+        torch.manual_seed(seed_start + i)
+        models.append(to_hetero(Model(), train_data.metadata()).to(device))
+    
+    train_eval_models(models, 
                      training_loader, 
                      eval_loader, 
                      constraints, 

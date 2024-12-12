@@ -6,7 +6,7 @@ from torch_geometric.nn import GraphConv, to_hetero
 from torch_geometric.datasets import OPFDataset
 from omegaconf import DictConfig
 
-from utils.common import train_eval_model
+from utils.common import train_eval_models
 from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss
 from models.CANOS import CANOS
 
@@ -48,8 +48,14 @@ def main(cfg: DictConfig):
         "power_balance": power_balance_loss
     }
 
-    model = CANOS(in_channels=-1, hidden_size=128, out_channels=2, num_message_passing_steps=2, metadata=data.metadata()).to(device)
-    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device, cfg.checkpoint_path, batch_size=cfg.batch_size)
+    models = []
+    seed_start = 0
+    for i in range(cfg.num_models_ensemble_method):
+        # Set unique random seed
+        torch.manual_seed(seed_start + i)
+        models.append(CANOS(in_channels=-1, hidden_size=128, out_channels=2, num_message_passing_steps=2, metadata=data.metadata()).to(device))
+    
+    train_eval_models(models, train_ds, eval_ds, constraints, lambdas, device, cfg.checkpoint_path, batch_size=cfg.batch_size)
 
 
 if __name__ == "__main__":
