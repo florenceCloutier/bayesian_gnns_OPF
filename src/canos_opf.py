@@ -48,17 +48,31 @@ def main(cfg: DictConfig):
         "power_balance": power_balance_loss
     }
 
-    use_dropout = True if cfg.approx_method == "MC_dropout" else False
+    use_dropout = cfg.approx_method == "MC_dropout"
+    use_va = cfg.approx_method == "variational_inference"
 
-    model = CANOS(in_channels=-1, 
-                  hidden_size=128, 
-                  out_channels=2, 
-                  num_message_passing_steps=2, 
-                  metadata=data.metadata(),
-                  use_dropout=use_dropout).to(device)
-    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device, batch_size=cfg.batch_size, num_samples=cfg.num_samples, approx_method=cfg.approx_method)
+    model = CANOS(
+        in_channels=-1,
+        hidden_size=cfg.hidden_size,
+        out_channels=2,
+        num_message_passing_steps=cfg.num_message_passing_steps,
+        metadata=data.metadata(),
+        use_dropout=use_dropout,
+        use_va=use_va,
+    ).to(device)
+    train_eval_model(
+        model,
+        train_ds,
+        eval_ds,
+        constraints,
+        lambdas,
+        device,
+        batch_size=cfg.batch_size,
+        num_samples=cfg.num_samples,
+        approx_method=cfg.approx_method,
+    )
 
 
 if __name__ == "__main__":
-    wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="canos_gnn")
+    wandb.init(entity="real-lab", project="PGM_bayes_gnn_opf", name="canos_gnn")
     main()

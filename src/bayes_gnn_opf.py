@@ -37,7 +37,7 @@ def main(cfg: DictConfig):
     }
     
     train_data = train_ds[0]
-    model = custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata())
+    model = custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata()).to(device)
     train_eval_model(model, 
                      training_loader, 
                      eval_loader, 

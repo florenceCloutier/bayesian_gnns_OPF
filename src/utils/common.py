@@ -126,7 +126,7 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
                 out, predictive_variance = monte_carlo_integration(model, data, num_samples)
                 model.eval()
             else:
-                out = model(data.x_dict, data.edge_index_dict)
+                out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
                 predictive_variance = None
 
             enforce_bound_constraints(out, data)
