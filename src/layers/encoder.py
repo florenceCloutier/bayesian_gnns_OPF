@@ -12,21 +12,33 @@ class GNEncoder(MessagePassing):
     # SUPPORTS_FUSED_EDGE_INDEX: Final[bool] = True
 
     def __init__(
-        self, in_channels: Union[int, Tuple[int, int]], hidden_size: int, aggr: str = "add"
+        self, 
+        in_channels: Union[int, Tuple[int, int]], 
+        hidden_size: int, 
+        aggr: str = "add",
+        dropout_rate = 0.5,
+        use_dropout = False
     ):
         super().__init__(aggr=aggr)
 
         self.in_channels = in_channels
         self.hidden_size = hidden_size
+        self.use_dropout = use_dropout
 
         if isinstance(in_channels, int):
             in_channels = (in_channels, in_channels)
 
         self.edge_mlp = nn.Sequential(
-            Linear(in_channels[0], hidden_size), nn.ReLU(), Linear(hidden_size, hidden_size)
+            Linear(in_channels[0], hidden_size), 
+            nn.ReLU(), 
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
+            Linear(hidden_size, hidden_size)
         )
         self.node_mlp = nn.Sequential(
-            Linear(-1, hidden_size), nn.ReLU(), Linear(hidden_size, hidden_size)
+            Linear(-1, hidden_size), 
+            nn.ReLU(), 
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
+            Linear(hidden_size, hidden_size)
         )
         self.edge_embedding = nn.Parameter(torch.randn(1, hidden_size))
         self.updated_edge_attr = Tensor()

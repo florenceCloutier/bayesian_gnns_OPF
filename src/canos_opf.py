@@ -48,8 +48,15 @@ def main(cfg: DictConfig):
         "power_balance": power_balance_loss
     }
 
-    model = CANOS(in_channels=-1, hidden_size=128, out_channels=2, num_message_passing_steps=2, metadata=data.metadata()).to(device)
-    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device, batch_size=cfg.batch_size)
+    use_dropout = True if cfg.approx_method == "MC_dropout" else False
+
+    model = CANOS(in_channels=-1, 
+                  hidden_size=128, 
+                  out_channels=2, 
+                  num_message_passing_steps=2, 
+                  metadata=data.metadata(),
+                  use_dropout=use_dropout).to(device)
+    train_eval_model(model, train_ds, eval_ds, constraints, lambdas, device, batch_size=cfg.batch_size, num_samples=cfg.num_samples, approx_method=cfg.approx_method)
 
 
 if __name__ == "__main__":
