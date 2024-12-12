@@ -119,9 +119,12 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
     with torch.no_grad():
         for data in eval_loader:
             data = data.to(device)
+
+            kl_loss = None
           
             if approx_method == "variational_inference":
                 out, predictive_variance = monte_carlo_integration(model, data, num_samples)
+                kl_loss = model.kl_loss() / len(eval_loader.dataset)
             elif approx_method == "MC_dropout":
                 model.train()
                 out, predictive_variance = monte_carlo_integration(model, data, num_samples)
@@ -169,6 +172,9 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device, 
                     for key in predictive_variance
                 })
             
+            if kl_loss is not None:
+                metrics['val_kl_loss'] = kl_loss.item()
+                
             batch_metrics.append(metrics)
 
     aggregated_metrics = {key: torch.tensor([m[key] for m in batch_metrics]).mean().item() for key in batch_metrics[0]}
