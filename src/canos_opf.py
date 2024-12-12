@@ -22,7 +22,7 @@ class Model(torch.nn.Module):
         x = self.conv2(x, edge_index)
         return x
 
-@hydra.main(config_path='../cfgs', config_name='gnn_opf', version_base=None)  
+@hydra.main(config_path='../cfgs', config_name='canos', version_base=None)  
 def main(cfg: DictConfig):
     # Load the 14-bus OPFData FullTopology dataset training split and store it in the
     # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
