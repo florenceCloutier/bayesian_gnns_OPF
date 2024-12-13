@@ -37,7 +37,7 @@ def main(cfg: DictConfig):
     }
     
     train_data = train_ds[0]
-    model = custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata())
+    model = custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata()).to(device)
     train_eval_model(model, 
                      training_loader, 
                      eval_loader, 
@@ -46,9 +46,11 @@ def main(cfg: DictConfig):
                      device,
                      cfg.checkpoint_path,
                      rho=cfg.rho,
+                     beta=cfg.beta,
                      train_log_interval=cfg.train_log_interval, 
                      epochs=cfg.epochs,
-                     batch_size=cfg.batch_size)
+                     num_samples=cfg.num_samples,
+                     approx_method=cfg.approx_method)
 
 if __name__ == "__main__":
     wandb.init(entity= "real-lab", project="PGM_bayes_gnn_opf", name="bayes_gnn")

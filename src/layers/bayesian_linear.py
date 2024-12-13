@@ -1,7 +1,5 @@
-from typing import Optional
-
 import torch
-from torch.distributions import Normal
+from torch import Tensor
 from torch.nn.parameter import Parameter
 import torch.nn.functional as F
 
@@ -78,16 +76,13 @@ class BayesianLinear(torch.nn.Module):
             self.mu_bias.data.normal_(mean=self.posterior_mu_init, std=0.1)
             self.rho_bias.data.normal_(mean=self.posterior_rho_init, std=0.1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.rho_weight.to(device)
-        sigma_weight = torch.log1p(torch.exp(self.rho_weight)).to(device)
-
-        weight = self.mu_weight.to(device) + (sigma_weight * self.eps_weight.data.normal_().to(device))
+    def forward(self, x: Tensor) -> Tensor:
+        sigma_weight = torch.log1p(torch.exp(self.rho_weight))
+        weight = self.mu_weight + (sigma_weight * self.eps_weight.data.normal_())
 
         if self.mu_bias is not None:
-            sigma_bias = torch.log1p(torch.exp(self.rho_bias)).to(device)
-            bias = self.mu_bias.to(device) + (sigma_bias * self.eps_bias.data.normal_().to(device))
+            sigma_bias = torch.log1p(torch.exp(self.rho_bias))
+            bias = self.mu_bias + (sigma_bias * self.eps_bias.data.normal_())
         else:
             bias = None
 
@@ -102,32 +97,40 @@ class BayesianLinear(torch.nn.Module):
             self.rho_weight.materialize((self.out_channels, self.in_channels))
 
             self.register_buffer("eps_weight", torch.Tensor(self.out_channels, self.in_channels), persistent=False)
-            self.register_buffer(
-                "prior_weight_mu", torch.Tensor(self.out_channels, self.in_channels), persistent=False
-            )
+            self.register_buffer("prior_weight_mu", torch.Tensor(self.out_channels, self.in_channels), persistent=False)
             self.register_buffer(
                 "prior_weight_sigma",
                 torch.Tensor(self.out_channels, self.in_channels),
                 persistent=False,
             )
 
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.to(device)
             self.reset_parameters()
         self._hook.remove()
         delattr(self, "_hook")
 
     def kl_loss(self):
         """Calculate KL divergence between variational posterior and prior"""
-        weight_prior = Normal(self.prior_weight_mu, self.prior_weight_sigma)
-        sigma_weight = torch.log1p(torch.exp(self.rho_weight))
-        weight_posterior = Normal(self.mu_weight, sigma_weight)
-        kl_weight = torch.distributions.kl_divergence(weight_posterior, weight_prior).sum()
+        if not (is_uninitialized_parameter(self.mu_weight) or is_uninitialized_parameter(self.rho_weight)):
+            sigma_weight = torch.log1p(torch.exp(self.rho_weight))
+            kl_weight = (
+                torch.log(self.prior_weight_sigma)
+                - torch.log(sigma_weight)
+                + (sigma_weight**2 + (self.mu_weight - self.prior_weight_mu) ** 2) / (2 * (self.prior_weight_sigma**2))
+                - 0.5
+            ).sum()
+            if self.mu_bias is not None:
+                sigma_bias = torch.log1p(torch.exp(self.rho_bias))
+                kl_bias = (
+                    torch.log(self.prior_bias_sigma)
+                    - torch.log(sigma_bias)
+                    + (sigma_bias**2 + (self.mu_bias - self.prior_bias_mu) ** 2) / (2 * (self.prior_bias_sigma**2))
+                    - 0.5
+                ).sum()
+            else:
+                kl_bias = 0.0
 
-        if self.mu_bias is not None:
-            bias_prior = Normal(self.prior_bias_mu, self.prior_bias_sigma)
-            sigma_bias = torch.log1p(torch.exp(self.rho_bias))
-            bias_posterior = Normal(self.mu_bias, sigma_bias)
-            kl_bias = torch.distributions.kl_divergence(bias_posterior, bias_prior).sum()
+            return kl_weight + kl_bias
         else:
-            kl_bias = 0
-
-        return kl_weight + kl_bias
+            return 0.0

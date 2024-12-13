@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 import torch.nn as nn
-from typing import Union, Tuple, List, Dict
+from typing import Union, Tuple, Dict
 
 from torch_geometric.typing import Metadata
 
@@ -71,6 +71,12 @@ def to_hetero_with_edges(model: nn.Module, metadata: Metadata) -> nn.Module:
         def reset_parameters(self):
             for conv in self.convs.values():
                 conv.reset_parameters()
+        
+        def kl_loss(self):
+            kl_loss = 0
+            for conv in self.convs.values():
+                kl_loss += conv.kl_loss()
+            return kl_loss
 
     # Store initialization arguments
     init_args = tuple()
@@ -97,22 +103,52 @@ class CANOS(torch.nn.Module):
         out_channels: int,
         num_message_passing_steps: int,
         metadata: Metadata,
+        dropout_rate: float = 0.5,
+        use_dropout: bool = False,
+        use_va: bool = False,
     ):
         super().__init__()
 
-        self.encoder = to_hetero_with_edges(GNEncoder(in_channels=in_channels, hidden_size=hidden_size), metadata)
-        self.processor = ProcessorModule(hidden_size=hidden_size, num_message_passing_steps=num_message_passing_steps, to_hetero=to_hetero_with_edges, metadata=metadata)
-        self.decoder = to_hetero_with_edges(GNDecoder(hidden_size=hidden_size, out_channels=out_channels), metadata)
-        
         self.in_channels = in_channels
         self.hidden_size = hidden_size
         self.out_channels = out_channels
         self.num_message_passing_steps = num_message_passing_steps
         self.metadata = metadata
+        
+        assert not (use_dropout and use_va), "trying to use variational inference with dropout"
+        self.use_va = use_va
 
-    def forward(
-        self, x_dict: Dict[str, Tensor], edge_index_dict: Dict[str, Tensor], edge_attr_dict: Dict[str, Tensor]
-    ):
+        self.encoder = to_hetero_with_edges(
+            GNEncoder(
+                in_channels=in_channels,
+                hidden_size=hidden_size,
+                dropout_rate=dropout_rate,
+                use_dropout=use_dropout,
+                use_va=use_va,
+            ),
+            metadata,
+        )
+        self.processor = ProcessorModule(
+            hidden_size=hidden_size,
+            num_message_passing_steps=num_message_passing_steps,
+            to_hetero=to_hetero_with_edges,
+            metadata=metadata,
+            dropout_rate=dropout_rate,
+            use_dropout=use_dropout,
+            use_va=use_va,
+        )
+        self.decoder = to_hetero_with_edges(
+            GNDecoder(
+                hidden_size=hidden_size,
+                out_channels=out_channels,
+                dropout_rate=dropout_rate,
+                use_dropout=use_dropout,
+                use_va=use_va,
+            ),
+            metadata,
+        )
+
+    def forward(self, x_dict: Dict[str, Tensor], edge_index_dict: Dict[str, Tensor], edge_attr_dict: Dict[str, Tensor]):
         # Encode
         latent_nodes, latent_edge_attr = self.encoder(x_dict, edge_index_dict, edge_attr_dict)
 
@@ -133,3 +169,7 @@ class CANOS(torch.nn.Module):
             'num_message_passing_steps': self.num_message_passing_steps,
             'metadata': self.metadata,
         }
+    def kl_loss(self):
+        """Calculate total KL divergence for the module"""
+        assert self.use_va, "Trying to get kl_loss when not using va"
+        return self.encoder.kl_loss() + self.processor.kl_loss() + self.decoder.kl_loss()
