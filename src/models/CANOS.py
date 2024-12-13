@@ -77,6 +77,9 @@ def to_hetero_with_edges(model: nn.Module, metadata: Metadata) -> nn.Module:
             for conv in self.convs.values():
                 kl_loss += conv.kl_loss()
             return kl_loss
+        
+        def get_init_kwargs(self):
+            return model.__init_kwargs__
 
     # Store initialization arguments
     init_args = tuple()
@@ -108,13 +111,17 @@ class CANOS(torch.nn.Module):
         use_va: bool = False,
     ):
         super().__init__()
-
-        self.in_channels = in_channels
-        self.hidden_size = hidden_size
-        self.out_channels = out_channels
-        self.num_message_passing_steps = num_message_passing_steps
-        self.metadata = metadata
         
+        # Store initialization arguments
+        init_args = tuple()
+        init_kwargs = {}
+        for param in self.__init__.__code__.co_varnames[1 : self.__init__.__code__.co_argcount]:
+            if hasattr(self, param):
+                init_kwargs[param] = getattr(self, param)
+
+        self.__init_args__ = init_args
+        self.__init_kwargs__ = init_kwargs
+
         assert not (use_dropout and use_va), "trying to use variational inference with dropout"
         self.use_va = use_va
 
@@ -159,17 +166,11 @@ class CANOS(torch.nn.Module):
         node_features, _ = self.decoder(latent_nodes, edge_index_dict, latent_edge_attr)
 
         return node_features
-    
-    def get_init_kwargs(self):
-        """Return initialization arguments for checkpointing."""
-        return {
-            'in_channels': self.in_channels,
-            'hidden_size': self.hidden_size,
-            'out_channels': self.out_channels,
-            'num_message_passing_steps': self.num_message_passing_steps,
-            'metadata': self.metadata,
-        }
+        
     def kl_loss(self):
         """Calculate total KL divergence for the module"""
         assert self.use_va, "Trying to get kl_loss when not using va"
         return self.encoder.kl_loss() + self.processor.kl_loss() + self.decoder.kl_loss()
+    
+    def get_init_kwargs(self):
+        return self.__init_kwargs__
