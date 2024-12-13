@@ -20,9 +20,10 @@ decay_rate: 0.9
 transition_steps: 4000
 total_steps: 600000
 epochs: 100
-batch_size: 4
+batch_size: 128
 kl_weight: 0.1
 num_samples: 50
 
 # Logging
 train_log_interval: 4
+checkpoint_path: "canos_gnn_model.pt"
