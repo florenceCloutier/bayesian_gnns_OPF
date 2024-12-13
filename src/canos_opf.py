@@ -13,7 +13,7 @@ from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss
 from models.CANOS import CANOS
 
 
-@hydra.main(config_path="../cfgs", config_name="canos", version_base=None)
+@hydra.main(config_path="../cfgs", config_name="canos_mc_dropout", version_base=None)
 def main(cfg: DictConfig):
     # Load the 14-bus OPFData FullTopology dataset training split and store it in the
     # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.

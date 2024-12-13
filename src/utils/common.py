@@ -5,12 +5,6 @@ from utils.loss import enforce_bound_constraints, compute_branch_powers, compute
 from utils.metrics import compute_metrics
 from models.bayesian_gnn import HeteroBayesianGNN
 
-# from torch.func import stack_module_state, functional_call
-# from torch import vmap
-# import copy
-
-# def fmodel(params, buffers, x):
-#     return functional_call(base_model, (params, buffers), (x,))
 
 """
 Training loop
@@ -46,14 +40,7 @@ def train_eval_models(models,
 def learning_step(models, optimizers, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, checkpoint_interval, checkpoint_path, device): # lr_scheduler, 
     for model in models:
         model.train()
-        
-    # params, buffers = stack_module_state(models)
 
-    # Construct a "stateless" version of one of the models. It is "stateless" in
-    # the sense that the parameters are meta Tensors and do not have storage.
-    # base_model = copy.deepcopy(models[0])
-    # base_model = base_model.to('meta')
-    
     batch_size = data_loader.batch_size
     for batch_idx, data in enumerate(data_loader):
         ensemble_outs = []
@@ -62,7 +49,6 @@ def learning_step(models, optimizers, num_samples, approx_method, data_loader, e
         L_supervised = []
         data = data.to(device)
         
-        # predictions = vmap(fmodel, in_dims=(0, 0, None))(params, buffers, data)
         for model_idx, model in enumerate(models):
             optimizer = optimizers[model_idx]
             optimizer.zero_grad()
@@ -255,7 +241,6 @@ def evaluate_models(models, eval_loader, constraints, beta, lambdas, device, num
     return aggregated_metrics
             
             
-
 def monte_carlo_integration(model, data, num_samples=50):
     predictions = []
 

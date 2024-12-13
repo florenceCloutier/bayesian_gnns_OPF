@@ -11,4 +11,4 @@ module load libffi
 echo "activating env"
 source .venv/bin/activate
 
-python src/canos_opf.py
+python src/canos_opf.py --config-name="canos_mc_dropout_ensemble"
