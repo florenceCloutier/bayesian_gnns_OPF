@@ -31,6 +31,8 @@ def to_hetero_with_edges(model: nn.Module, metadata: Metadata) -> nn.Module:
             self.convs = nn.ModuleDict()
             for edge_type in edge_types:
                 self.convs[str(edge_type)] = model.__class__(*model.__init_args__, **model.__init_kwargs__)
+                
+            self.reset_parameters()
 
         def forward(
             self,
@@ -108,12 +110,6 @@ class CANOS(torch.nn.Module):
         use_va: bool = False,
     ):
         super().__init__()
-
-        self.in_channels = in_channels
-        self.hidden_size = hidden_size
-        self.out_channels = out_channels
-        self.num_message_passing_steps = num_message_passing_steps
-        self.metadata = metadata
         
         assert not (use_dropout and use_va), "trying to use variational inference with dropout"
         self.use_va = use_va
@@ -147,6 +143,16 @@ class CANOS(torch.nn.Module):
             ),
             metadata,
         )
+        
+        # Store initialization arguments
+        init_args = tuple()
+        init_kwargs = {}
+        for param in self.__init__.__code__.co_varnames[1 : self.__init__.__code__.co_argcount]:
+            if hasattr(self, param):
+                init_kwargs[param] = getattr(self, param)
+
+        self.__init_args__ = init_args
+        self.__init_kwargs__ = init_kwargs
 
     def forward(self, x_dict: Dict[str, Tensor], edge_index_dict: Dict[str, Tensor], edge_attr_dict: Dict[str, Tensor]):
         # Encode
@@ -162,13 +168,8 @@ class CANOS(torch.nn.Module):
     
     def get_init_kwargs(self):
         """Return initialization arguments for checkpointing."""
-        return {
-            'in_channels': self.in_channels,
-            'hidden_size': self.hidden_size,
-            'out_channels': self.out_channels,
-            'num_message_passing_steps': self.num_message_passing_steps,
-            'metadata': self.metadata,
-        }
+        return self.__init_kwargs__
+        
     def kl_loss(self):
         """Calculate total KL divergence for the module"""
         assert self.use_va, "Trying to get kl_loss when not using va"
