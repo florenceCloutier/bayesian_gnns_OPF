@@ -134,3 +134,79 @@ class BayesianLinear(torch.nn.Module):
             return kl_weight + kl_bias
         else:
             return 0.0
+    
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        if (is_uninitialized_parameter(self.mu_weight)
+                or torch.onnx.is_in_onnx_export() or keep_vars):
+            destination[prefix + 'mu_weight'] = self.mu_weight
+            destination[prefix + 'eps_weight'] = self.eps_weight
+            destination[prefix + 'prior_weight_mu'] = self.prior_weight_mu
+            destination[prefix + 'prior_weight_sigma'] = self.prior_weight_sigma
+        else:
+            destination[prefix + 'mu_weight'] = self.mu_weight.detach()
+            destination[prefix + 'eps_weight'] = self.eps_weight.detach()
+            destination[prefix + 'prior_weight_mu'] = self.prior_weight_mu.detach()
+            destination[prefix + 'prior_weight_sigma'] = self.prior_weight_sigma.detach()
+        if self.mu_bias is not None:
+            if torch.onnx.is_in_onnx_export() or keep_vars:
+                destination[prefix + 'mu_bias'] = self.mu_bias
+                destination[prefix + 'rho_bias'] = self.rho_bias
+                destination[prefix + 'eps_bias'] = self.eps_bias
+                destination[prefix + 'prior_bias_mu'] = self.prior_bias_mu
+                destination[prefix + 'prior_bias_sigma'] = self.prior_bias_sigma
+            else:
+                destination[prefix + 'mu_bias'] = self.mu_bias.detach()
+                destination[prefix + 'rho_bias'] = self.rho_bias.detach()
+                destination[prefix + 'eps_bias'] = self.eps_bias.detach()
+                destination[prefix + 'prior_bias_mu'] = self.prior_bias_mu.detach()
+                destination[prefix + 'prior_bias_sigma'] = self.prior_bias_sigma.detach()
+        if (is_uninitialized_parameter(self.rho_weight)
+                or torch.onnx.is_in_onnx_export() or keep_vars):
+            destination[prefix + 'rho_weight'] = self.rho_weight
+        else:
+            destination[prefix + 'rho_weight'] = self.rho_weight.detach()
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        mu_weight = state_dict.get(prefix + 'mu_weight', None)
+
+        if mu_weight is not None and is_uninitialized_parameter(mu_weight):
+            self.in_channels = -1
+            self.mu_weight = torch.nn.parameter.UninitializedParameter()
+            self.register_buffer("eps_weight", None, persistent=False)
+            self.register_buffer("prior_weight_mu", None, persistent=False)
+            self.register_buffer("prior_weight_sigma", None, persistent=False)
+            if not hasattr(self, '_hook'):
+                self._hook = self.register_forward_pre_hook(
+                    self.initialize_parameters)
+
+        elif mu_weight is not None and is_uninitialized_parameter(self.mu_weight):
+            self.in_channels = mu_weight.size(-1)
+            self.mu_weight.materialize((self.out_channels, self.in_channels))
+            self.register_buffer("eps_weight", torch.Tensor(self.out_channels, self.in_channels), persistent=False)
+            self.register_buffer("prior_weight_mu", torch.Tensor(self.out_channels, self.in_channels), persistent=False)
+            self.register_buffer(
+                "prior_weight_sigma",
+                torch.Tensor(self.out_channels, self.in_channels),
+                persistent=False,
+            )
+            if hasattr(self, '_hook'):
+                self._hook.remove()
+                delattr(self, '_hook')
+
+        rho_weight = state_dict.get(prefix + 'rho_weight', None)
+        
+        if rho_weight is not None and is_uninitialized_parameter(rho_weight):
+            self.in_channels = -1
+            self.rho_weight = torch.nn.parameter.UninitializedParameter()
+            if not hasattr(self, '_hook'):
+                self._hook = self.register_forward_pre_hook(
+                    self.initialize_parameters)
+
+        elif rho_weight is not None and is_uninitialized_parameter(self.rho_weight):
+            self.in_channels = rho_weight.size(-1)
+            self.rho_weight.materialize((self.out_channels, self.in_channels))
+            if hasattr(self, '_hook'):
+                self._hook.remove()
+                delattr(self, '_hook')
+
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)

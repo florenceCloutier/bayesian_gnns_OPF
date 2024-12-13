@@ -1,5 +1,5 @@
 # Data
-data_dir: "/network/scratch/f/florence.cloutier"
+data_dir: "/home/artur/bayesian_gnns_OPF/data"
 case_name: "pglib_opf_case14_ieee"
 
 # Model parameters

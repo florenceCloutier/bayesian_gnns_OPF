@@ -13,13 +13,13 @@ from .bayesian_linear import BayesianLinear
 class GNEncoder(MessagePassing):
 
     def __init__(
-        self, 
-        in_channels: Union[int, Tuple[int, int]], 
-        hidden_size: int, 
+        self,
+        in_channels: Union[int, Tuple[int, int]],
+        hidden_size: int,
         aggr: str = "add",
-        dropout_rate = 0.5,
-        use_dropout = False,
-        use_va = False,
+        dropout_rate=0.5,
+        use_dropout=False,
+        use_va=False,
     ):
         super().__init__(aggr=aggr)
 
@@ -52,11 +52,12 @@ class GNEncoder(MessagePassing):
 
     def reset_parameters(self):
         super().reset_parameters()
-        for layer in self.edge_mlp.children():
-            if hasattr(layer, 'reset_parameters'):
-                layer.reset_parameters()
+        if self.edge_mlp:
+            for layer in self.edge_mlp.children():
+                if hasattr(layer, "reset_parameters"):
+                    layer.reset_parameters()
         for layer in self.node_mlp.children():
-            if hasattr(layer, 'reset_parameters'):
+            if hasattr(layer, "reset_parameters"):
                 layer.reset_parameters()
 
     def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj, edge_attr: Tensor) -> Tuple[Tensor, Tensor]:
@@ -75,6 +76,9 @@ class GNEncoder(MessagePassing):
         """
         if isinstance(x, Tensor):
             x = (x, x)
+
+        if edge_attr is None:
+            self.edge_mlp = None
 
         node_features = self.propagate(edge_index=edge_index, x=x, edge_attr=edge_attr)
 
@@ -102,12 +106,21 @@ class GNEncoder(MessagePassing):
         """Calculate total KL divergence for the module"""
         assert self.use_va, "Trying to get kl_loss when not using va"
         kl_loss_total = 0.0
-        for layer in self.edge_mlp.children():
-            if hasattr(layer, "kl_loss"):
-                kl_loss_total = kl_loss_total + layer.kl_loss()
+        if self.edge_mlp:
+            for layer in self.edge_mlp.children():
+                if hasattr(layer, "kl_loss"):
+                    kl_loss_total = kl_loss_total + layer.kl_loss()
         for layer in self.node_mlp.children():
             if hasattr(layer, "kl_loss"):
                 kl_loss_total = kl_loss_total + layer.kl_loss()
 
         return kl_loss_total
 
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        edge_state_dict = state_dict.get(prefix + 'edge_mlp', None)
+        if edge_state_dict:
+            self.edge_mlp._load_from_state_dict(edge_state_dict, prefix + 'edge_mlp.', *args, **kwargs)
+        else:
+            self.edge_mlp = None
+        
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
