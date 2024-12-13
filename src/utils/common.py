@@ -260,7 +260,7 @@ def monte_carlo_integration(model, data, num_samples=50):
     predictions = []
 
     for _ in range(num_samples):
-        preds = model(data.x_dict, data.edge_index_dict)
+        preds = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
         predictions.append(preds)
     
     aggregated_out = {key : torch.stack([pred[key] for pred in predictions]).mean(dim=0)
