@@ -103,6 +103,12 @@ class CANOS(torch.nn.Module):
         self.encoder = to_hetero_with_edges(GNEncoder(in_channels=in_channels, hidden_size=hidden_size), metadata)
         self.processor = ProcessorModule(hidden_size=hidden_size, num_message_passing_steps=num_message_passing_steps, to_hetero=to_hetero_with_edges, metadata=metadata)
         self.decoder = to_hetero_with_edges(GNDecoder(hidden_size=hidden_size, out_channels=out_channels), metadata)
+        
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.out_channels = out_channels
+        self.num_message_passing_steps = num_message_passing_steps
+        self.metadata = metadata
 
     def forward(
         self, x_dict: Dict[str, Tensor], edge_index_dict: Dict[str, Tensor], edge_attr_dict: Dict[str, Tensor]
@@ -117,3 +123,13 @@ class CANOS(torch.nn.Module):
         node_features, _ = self.decoder(latent_nodes, edge_index_dict, latent_edge_attr)
 
         return node_features
+    
+    def get_init_kwargs(self):
+        """Return initialization arguments for checkpointing."""
+        return {
+            'in_channels': self.in_channels,
+            'hidden_size': self.hidden_size,
+            'out_channels': self.out_channels,
+            'num_message_passing_steps': self.num_message_passing_steps,
+            'metadata': self.metadata,
+        }

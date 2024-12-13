@@ -82,7 +82,15 @@ def learning_step(model, optimizer, batch_size, data_loader, eval_loader, lambda
             wandb.log(metrics)
         
         if batch_idx % checkpoint_interval == 0:
-            torch.save(model, checkpoint_path)
+            model_state_dict = model.state_dict()
+            model_init_kwargs = model.get_init_kwargs()
+            torch.save(
+                {
+                    'model_state_dict': model_state_dict,
+                    'model_init_kwargs': model_init_kwargs,
+                },
+                checkpoint_path
+            )
 
         # Backprop and optimization
         total_loss.backward()
@@ -119,7 +127,7 @@ def evaluate_model(model, eval_loader, constraints, lambdas, optimizer, device):
     with torch.no_grad():
         for data in eval_loader:
             data = data.to(device)
-            out = model(data.x_dict, data.edge_index_dict)
+            out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
             enforce_bound_constraints(out, data)
             
             branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
