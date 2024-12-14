@@ -2,7 +2,6 @@ import torch
 from torch import Tensor
 from torch import nn
 from typing import Tuple, Union
-from collections import OrderedDict
 
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.dense.linear import Linear
@@ -35,7 +34,7 @@ class GNEncoder(MessagePassing):
 
         LinearLayer: nn.Module = BayesianLinear if use_va else Linear
 
-        self.edge_mlp = self.edge_mlp = nn.Sequential(
+        self.edge_mlp = nn.Sequential(
             LinearLayer(in_channels[0], hidden_size), 
             nn.ReLU(), 
             nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
@@ -60,7 +59,7 @@ class GNEncoder(MessagePassing):
         for layer in self.node_mlp.children():
             if hasattr(layer, "reset_parameters"):
                 layer.reset_parameters()
-
+                
     def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj, edge_attr: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Forward pass of the GN encoder.
@@ -77,7 +76,7 @@ class GNEncoder(MessagePassing):
         """
         if isinstance(x, Tensor):
             x = (x, x)
-
+            
         if edge_attr is None:
             self.edge_mlp = None
 

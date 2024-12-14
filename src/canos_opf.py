@@ -8,12 +8,12 @@ from torch_geometric.loader import DataLoader
 
 from omegaconf import DictConfig
 
-from utils.common import train_eval_model
+from utils.common import train_eval_models
 from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss
 from models.CANOS import CANOS
 
 
-@hydra.main(config_path="../cfgs", config_name="canos", version_base=None)
+@hydra.main(config_path="../cfgs", config_name="canos_mc_dropout", version_base=None)
 def main(cfg: DictConfig):
     # Load the 14-bus OPFData FullTopology dataset training split and store it in the
     # directory 'data'. Each record is a `torch_geometric.data.HeteroData`.
@@ -38,20 +38,25 @@ def main(cfg: DictConfig):
     # constraints
     constraints = {"voltage_angle": voltage_angle_loss, "flow": flow_loss, "power_balance": power_balance_loss}
 
+    models = []
+    seed_start = 0
     use_dropout = cfg.approx_method == "MC_dropout"
     use_va = cfg.approx_method == "variational_inference"
-
-    model = CANOS(
-        in_channels=-1,
-        hidden_size=cfg.hidden_size,
-        out_channels=2,
-        num_message_passing_steps=cfg.num_message_passing_steps,
-        metadata=data.metadata(),
-        use_dropout=use_dropout,
-        use_va=use_va,
-    ).to(device)
-    train_eval_model(
-        model,
+    for i in range(cfg.num_models_ensemble_method):
+        # Set unique random seed
+        torch.manual_seed(seed_start + i)
+        models.append(CANOS(
+            in_channels=-1,
+            hidden_size=cfg.hidden_size,
+            out_channels=2,
+            num_message_passing_steps=cfg.num_message_passing_steps,
+            metadata=data.metadata(),
+            use_dropout=use_dropout,
+            use_va=use_va,
+        ).to(device))
+    
+    train_eval_models(
+        models,
         training_loader,
         eval_loader,
         constraints,
@@ -65,7 +70,6 @@ def main(cfg: DictConfig):
         num_samples=cfg.num_samples,
         approx_method=cfg.approx_method,
     )
-
 
 if __name__ == "__main__":
     wandb.init(entity="real-lab", project="PGM_bayes_gnn_opf", name="canos_gnn")

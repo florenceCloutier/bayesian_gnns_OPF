@@ -7,7 +7,7 @@ from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
 
 from models.bayesian_gnn import BayesianGNN, custom_to_hetero
-from utils.common import train_eval_model
+from utils.common import train_eval_models
 from utils.loss import voltage_angle_loss, flow_loss, power_balance_loss
 
 @hydra.main(config_path='../cfgs', config_name='bayes_gnn_opf', version_base=None)  
@@ -37,8 +37,16 @@ def main(cfg: DictConfig):
     }
     
     train_data = train_ds[0]
-    model = custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata()).to(device)
-    train_eval_model(model, 
+
+    # Initialize models for ensemble method (if no ensemble method, the is only 1 model)
+    models = []
+    seed_start = 0 
+    for i in range(cfg.num_models_ensemble_method):
+        # Set unique random seed
+        torch.manual_seed(seed_start + i)
+        models.append(custom_to_hetero(BayesianGNN(in_channels=-1, hidden_channels=16, out_channels=2, num_layers=cfg.hidden_dim), train_data.metadata()).to(device))
+    
+    train_eval_models(models,  
                      training_loader, 
                      eval_loader, 
                      constraints, 

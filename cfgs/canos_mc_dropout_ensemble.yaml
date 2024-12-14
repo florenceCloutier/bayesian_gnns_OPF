@@ -3,14 +3,15 @@ data_dir: "/network/scratch/f/florence.cloutier"
 case_name: "pglib_opf_case14_ieee"
 
 # Model parameters
-hidden_dim: 2
+hidden_size: 128
+num_message_passing_steps: 2
 
 # Method of bayesian approx
-approx_method: "variational_inference"
+approx_method: "MC_dropout"
 
 # Training hyperparams
 rho: 0.0001
-beta: 1.0
+beta: 0.0005
 initial_learning_rate: 0.0
 peak_learning_rate: 2e-4
 final_learning_rate: 5e-6
@@ -21,9 +22,9 @@ total_steps: 600000
 epochs: 100
 batch_size: 128
 kl_weight: 0.1
-num_models_ensemble_method: 1
+num_models_ensemble_method: 5
 num_samples: 50
 
 # Logging
 train_log_interval: 4
-checkpoint_path: "bayes_gnn_model.pt"
+checkpoint_path: "/network/scratch/f/florence.cloutier/canos_gnn_model_mc_dropout_esemble.pt"

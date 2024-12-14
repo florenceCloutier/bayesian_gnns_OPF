@@ -79,6 +79,9 @@ def to_hetero_with_edges(model: nn.Module, metadata: Metadata) -> nn.Module:
             for conv in self.convs.values():
                 kl_loss += conv.kl_loss()
             return kl_loss
+        
+        def get_init_kwargs(self):
+            return model.__init_kwargs__
 
     # Store initialization arguments
     init_args = tuple()

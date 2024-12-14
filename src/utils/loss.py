@@ -304,6 +304,20 @@ def compute_loss_supervised(out, data, branch_powers_ac_line, branch_powers_tran
 
     return total_loss
 
+def compute_loss_contraints(constraints, ensemble_avg_out, data, branch_powers_ac_line, branch_powers_transformer, lambdas, device):
+    L_constraints = 0.0
+    violation_degrees = {}
+    for name, constraint_fn in constraints.items():
+        if name == "power_balance":
+            violation = constraint_fn(ensemble_avg_out, data, branch_powers_ac_line, branch_powers_transformer, device)
+        elif name == "flow":
+            violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
+        else:
+            violation = constraint_fn(ensemble_avg_out, data)
+        violation_degrees[name] = violation
+        L_constraints += lambdas[name] * violation
+    
+    return violation_degrees, L_constraints
 
 def cost(out, data):
     """
