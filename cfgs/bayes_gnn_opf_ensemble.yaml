@@ -1,12 +1,12 @@
 # Data
-data_dir: "/home/artur/bayesian_gnns_OPF/data"
+data_dir: "/network/scratch/f/florence.cloutier"
 case_name: "pglib_opf_case14_ieee"
 
 # Model parameters
 hidden_dim: 2
 
 # Method of bayesian approx
-approx_method: "variational_inference"
+approx_method: "vanilla"
 
 # Training hyperparams
 rho: 0.0001

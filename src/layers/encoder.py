@@ -59,7 +59,7 @@ class GNEncoder(MessagePassing):
         for layer in self.node_mlp.children():
             if hasattr(layer, "reset_parameters"):
                 layer.reset_parameters()
-    
+                
     def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj, edge_attr: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Forward pass of the GN encoder.
@@ -76,7 +76,7 @@ class GNEncoder(MessagePassing):
         """
         if isinstance(x, Tensor):
             x = (x, x)
-        
+            
         if edge_attr is None:
             self.edge_mlp = None
 
