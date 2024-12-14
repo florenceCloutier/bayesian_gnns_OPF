@@ -25,6 +25,9 @@ kl_weight: 0.1
 num_models_ensemble_method: 5
 num_samples: 50
 
+# Metric evaluation
+evaluate_metrics: False
+
 # Logging
 train_log_interval: 4
 checkpoint_path: "/network/scratch/f/florence.cloutier/canos_gnn_model_mc_dropout_esemble.pt"
