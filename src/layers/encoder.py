@@ -40,8 +40,7 @@ class GNEncoder(MessagePassing):
             LinearLayer(hidden_size, hidden_size)
         )
         self.node_mlp = nn.Sequential(
-            LinearLayer(-1, hidden_size), 
-            nn.ReLU(), 
+            LinearLayer(in_channels[1], hidden_size), 
             nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
             LinearLayer(hidden_size, hidden_size)
         )
@@ -99,8 +98,7 @@ class GNEncoder(MessagePassing):
         """
         Updates node features using the aggregated messages.
         """
-        combined = torch.cat([x[1], aggr_out], dim=-1)
-        return self.node_mlp(combined)
+        return self.node_mlp(x[1])
     
     def kl_loss(self):
         """Calculate total KL divergence for the module"""
