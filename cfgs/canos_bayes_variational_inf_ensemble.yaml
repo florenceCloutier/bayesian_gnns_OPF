@@ -27,4 +27,4 @@ num_samples: 50
 
 # Logging
 train_log_interval: 4
-checkpoint_path: "canos_gnn_model_bayes_variational_inf_ensemble.pt"
+checkpoint_path: "/network/scratch/f/florence.cloutier/canos_gnn_model_bayes_variational_inf_ensemble.pt"

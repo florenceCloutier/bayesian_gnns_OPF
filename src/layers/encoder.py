@@ -28,6 +28,7 @@ class GNEncoder(MessagePassing):
         self.hidden_size = hidden_size
         self.use_dropout = use_dropout
         self.use_va = use_va
+        self.dropout_rate = dropout_rate
 
         if isinstance(in_channels, int):
             in_channels = (in_channels, in_channels)

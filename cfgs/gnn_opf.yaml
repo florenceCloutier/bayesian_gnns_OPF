@@ -25,4 +25,4 @@ num_samples: 50
 
 # Logging
 train_log_interval: 4
-checkpoint_path: "vanilla_gnn_model.pt"
+checkpoint_path: "/network/scratch/f/florence.cloutier/vanilla_gnn_model.pt"
