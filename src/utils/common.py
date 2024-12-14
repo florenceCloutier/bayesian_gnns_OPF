@@ -3,7 +3,6 @@ import wandb
 
 from utils.loss import enforce_bound_constraints, compute_branch_powers, compute_loss_supervised, cost, BRANCH_FEATURE_INDICES
 from utils.metrics import compute_metrics
-from models.bayesian_gnn import HeteroBayesianGNN
 
 
 """
@@ -16,9 +15,11 @@ def train_eval_model(model,
                 constraints,
                 lambdas,
                 device,
+                checkpoint_path,
                 rho=0.0001,
                 beta=0.001,
                 train_log_interval=100,
+                checkpoint_interval=10000,
                 epochs=100,
                 num_samples=10,
                 approx_method="variational_inference"
@@ -32,9 +33,9 @@ def train_eval_model(model,
     # training loop
     for _ in range(epochs):
         model.train()
-        lambdas = learning_step(model, optimizer, num_samples, approx_method, training_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, device=device) #lr_scheduler, 
+        lambdas = learning_step(model, optimizer, num_samples, approx_method, training_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, checkpoint_interval, checkpoint_path, device=device) #lr_scheduler, 
 
-def learning_step(model, optimizer, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, device): # lr_scheduler, 
+def learning_step(model, optimizer, num_samples, approx_method, data_loader, eval_loader, lambdas, constraints, rho, beta, train_log_interval, checkpoint_interval, checkpoint_path, device): # lr_scheduler, 
     batch_size = data_loader.batch_size
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
@@ -85,6 +86,17 @@ def learning_step(model, optimizer, num_samples, approx_method, data_loader, eva
             eval_metrics = evaluate_model(model, eval_loader, constraints, beta, lambdas, optimizer, device, num_samples, approx_method)
             metrics.update(eval_metrics)
             wandb.log(metrics)
+        
+        if batch_idx % checkpoint_interval == 0:
+            model_state_dict = model.state_dict()
+            model_init_kwargs = model.get_init_kwargs()
+            torch.save(
+                {
+                    'model_state_dict': model_state_dict,
+                    'model_init_kwargs': model_init_kwargs,
+                },
+                checkpoint_path
+            )
 
         # Backprop and optimization
         total_loss.backward()
@@ -94,20 +106,28 @@ def learning_step(model, optimizer, num_samples, approx_method, data_loader, eva
         
     # compute the violation degrees
     model.eval()
-    violation_degrees = {k: 0.0 for k in constraints.keys()}
-    for batch_idx, data in enumerate(data_loader):
-        data = data.to(device)
+    with torch.no_grad():
+        violation_degrees = {k: 0.0 for k in constraints.keys()}
+        for batch_idx, data in enumerate(data_loader):
+            data = data.to(device)
 
-        out = model(data.x_dict, data.edge_index_dict)
+            out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
 
-        for name, constraint_fn in constraints.items():
-            if name == "power_balance":
-                violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
-            elif name == "flow":
-                violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
-            else:
-                violation = constraint_fn(out, data)
-            violation_degrees[name] += violation
+            # Bound constraints (6) and (7) from CANOS
+            enforce_bound_constraints(out, data)
+
+            # compute branch powers
+            branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
+            branch_powers_transformer = compute_branch_powers(out, data, 'transformer', device)
+
+            for name, constraint_fn in constraints.items():
+                if name == "power_balance":
+                    violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
+                elif name == "flow":
+                    violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
+                else:
+                    violation = constraint_fn(out, data)
+                violation_degrees[name] += violation
 
     # update lambdas
     for name in lambdas.keys():

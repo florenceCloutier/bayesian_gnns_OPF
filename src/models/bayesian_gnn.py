@@ -7,12 +7,16 @@ from layers.bayesian_graph_conv import BayesianGraphConv
 # Custom to_hetero wrapper
 def custom_to_hetero(model, metadata):
     hetero_model = to_hetero(model, metadata)
-    return HeteroBayesianGNN(hetero_model)
+    return HeteroBayesianGNN(hetero_model, model.hidden_channels, model.in_channels, model.out_channels, model.num_layers)
 
 
 class BayesianGNN(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, num_layers=2):
         super().__init__()
+        self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels = out_channels
+        self.num_layers = num_layers
 
         self.convs = torch.nn.ModuleList()
 
@@ -38,9 +42,14 @@ class BayesianGNN(torch.nn.Module):
 
 
 class HeteroBayesianGNN(torch.nn.Module):
-    def __init__(self, base_model):
+    def __init__(self, base_model, in_channels, hidden_channels, out_channels, num_layers=2):
         super().__init__()
         self.model = base_model
+        
+        self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
+        self.out_channels = out_channels
+        self.num_layers = num_layers
         
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
@@ -51,3 +60,12 @@ class HeteroBayesianGNN(torch.nn.Module):
             if isinstance(module, BayesianGraphConv):
                 kl_loss += module.kl_loss()
         return kl_loss
+    
+    def get_init_kwargs(self):
+        """Return initialization arguments for checkpointing."""
+        return {
+            'in_channels': self.in_channels,
+            'hidden_channels': self.hidden_channels,
+            'out_channels': self.out_channels,
+            'num_layers': self.num_layers,
+        }
