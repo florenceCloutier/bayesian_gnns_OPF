@@ -2,6 +2,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from typing import Union, Tuple, Dict
+from collections import OrderedDict
 
 from torch_geometric.typing import Metadata
 
@@ -24,13 +25,14 @@ def to_hetero_with_edges(model: nn.Module, metadata: Metadata) -> nn.Module:
     class HeteroWrapper(nn.Module):
         def __init__(self):
             super().__init__()
-            self.model = model
             node_types, edge_types = metadata
 
             # Create dict of homogeneous models for each edge type
             self.convs = nn.ModuleDict()
             for edge_type in edge_types:
                 self.convs[str(edge_type)] = model.__class__(*model.__init_args__, **model.__init_kwargs__)
+                
+            self.reset_parameters()
 
         def forward(
             self,
@@ -112,17 +114,14 @@ class CANOS(torch.nn.Module):
     ):
         super().__init__()
         
-        # Store initialization arguments
-        init_args = tuple()
-        init_kwargs = {}
-        for param in self.__init__.__code__.co_varnames[1 : self.__init__.__code__.co_argcount]:
-            if hasattr(self, param):
-                init_kwargs[param] = getattr(self, param)
-
-        self.__init_args__ = init_args
-        self.__init_kwargs__ = init_kwargs
-
         assert not (use_dropout and use_va), "trying to use variational inference with dropout"
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.out_channels = out_channels
+        self.num_message_passing_steps = num_message_passing_steps
+        self.metadata = metadata
+        self.dropout_rate = dropout_rate
+        self.use_dropout = use_dropout
         self.use_va = use_va
 
         self.encoder = to_hetero_with_edges(
@@ -154,6 +153,26 @@ class CANOS(torch.nn.Module):
             ),
             metadata,
         )
+        
+        # Store initialization arguments
+        init_args = tuple()
+        init_kwargs = {}
+        for param in self.__init__.__code__.co_varnames[1 : self.__init__.__code__.co_argcount]:
+            if hasattr(self, param):
+                init_kwargs[param] = getattr(self, param)
+
+        self.__init_args__ = init_args
+        self.__init_kwargs__ = init_kwargs
+
+        # Store initialization arguments
+        init_args = tuple()
+        init_kwargs = {}
+        for param in self.__init__.__code__.co_varnames[1 : self.__init__.__code__.co_argcount]:
+            if hasattr(self, param):
+                init_kwargs[param] = getattr(self, param)
+
+        self.__init_args__ = init_args
+        self.__init_kwargs__ = init_kwargs
 
     def forward(self, x_dict: Dict[str, Tensor], edge_index_dict: Dict[str, Tensor], edge_attr_dict: Dict[str, Tensor]):
         # Encode
@@ -166,6 +185,10 @@ class CANOS(torch.nn.Module):
         node_features, _ = self.decoder(latent_nodes, edge_index_dict, latent_edge_attr)
 
         return node_features
+    
+    def get_init_kwargs(self):
+        """Return initialization arguments for checkpointing."""
+        return self.__init_kwargs__
         
     def kl_loss(self):
         """Calculate total KL divergence for the module"""
@@ -173,4 +196,5 @@ class CANOS(torch.nn.Module):
         return self.encoder.kl_loss() + self.processor.kl_loss() + self.decoder.kl_loss()
     
     def get_init_kwargs(self):
+        """Return initialization arguments for checkpointing."""
         return self.__init_kwargs__

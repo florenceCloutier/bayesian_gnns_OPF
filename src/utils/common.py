@@ -3,7 +3,6 @@ import wandb
 
 from utils.loss import enforce_bound_constraints, compute_branch_powers, compute_loss_supervised, compute_loss_contraints, cost, BRANCH_FEATURE_INDICES
 from utils.metrics import compute_metrics
-from models.bayesian_gnn import HeteroBayesianGNN
 
 
 """
@@ -124,25 +123,28 @@ def learning_step(models, optimizers, num_samples, approx_method, data_loader, e
         
     # compute the violation degrees
     model.eval()
-    violation_degrees = {k: 0.0 for k in constraints.keys()}
-    for batch_idx, data in enumerate(data_loader):
-        ensemble_outs = []
-        for model_idx, model in enumerate(models):
+    with torch.no_grad():
+        violation_degrees = {k: 0.0 for k in constraints.keys()}
+        for batch_idx, data in enumerate(data_loader):
             data = data.to(device)
-            ensemble_outs.append(model(data.x_dict, data.edge_index_dict))
-        
-        ensemble_avg_out = {}
-        for key in ensemble_outs[0].keys():
-            stacked_tensors = torch.stack([d[key] for d in ensemble_outs], dim=0)
-            ensemble_avg_out[key] = stacked_tensors.mean(dim=0)
-        
-        branch_powers_ac_line_ens = compute_branch_powers(ensemble_avg_out, data, 'ac_line', device)
-        branch_powers_transformer_ens = compute_branch_powers(ensemble_avg_out, data, 'transformer', device)
-        
-        individual_violations, _ = compute_loss_contraints(constraints, ensemble_avg_out, data, branch_powers_ac_line, branch_powers_transformer, lambdas, device)      
 
-        for name, _ in constraints.items():  
-            violation_degrees[name] += individual_violations[name]
+            out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
+
+            # Bound constraints (6) and (7) from CANOS
+            enforce_bound_constraints(out, data)
+
+            # compute branch powers
+            branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
+            branch_powers_transformer = compute_branch_powers(out, data, 'transformer', device)
+
+            for name, constraint_fn in constraints.items():
+                if name == "power_balance":
+                    violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
+                elif name == "flow":
+                    violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
+                else:
+                    violation = constraint_fn(out, data)
+                violation_degrees[name] += violation
 
     # update lambdas
     for name in lambdas.keys():
