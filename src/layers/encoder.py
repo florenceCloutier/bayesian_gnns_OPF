@@ -2,7 +2,6 @@ import torch
 from torch import Tensor
 from torch import nn
 from typing import Tuple, Union
-from collections import OrderedDict
 
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.dense.linear import Linear
@@ -35,11 +34,16 @@ class GNEncoder(MessagePassing):
 
         LinearLayer: nn.Module = BayesianLinear if use_va else Linear
 
-        self.edge_mlp = None
+        self.edge_mlp = nn.Sequential(
+            LinearLayer(in_channels[0], hidden_size), 
+            nn.ReLU(), 
+            nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
+            LinearLayer(hidden_size, hidden_size)
+        )
         self.node_mlp = nn.Sequential(
             LinearLayer(in_channels[1], hidden_size), 
             nn.Dropout(p=dropout_rate) if use_dropout else nn.Identity(),
-            self.LinearLayer(hidden_size, hidden_size)
+            LinearLayer(hidden_size, hidden_size)
         )
         self.edge_embedding = nn.Parameter(torch.randn(1, hidden_size))
         self.updated_edge_attr = Tensor()
@@ -56,19 +60,6 @@ class GNEncoder(MessagePassing):
             if hasattr(layer, "reset_parameters"):
                 layer.reset_parameters()
     
-    def _initialize_edge_mlp(self, edge_attr):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.edge_mlp = nn.Sequential(
-                self.LinearLayer(edge_attr.shape[-1], self.hidden_size), 
-                nn.ReLU(), 
-                nn.Dropout(p=self.dropout_rate) if self.use_dropout else nn.Identity(),
-                self.LinearLayer(self.hidden_size, self.hidden_size)
-            ).to(device)
-
-        # Load lazy layers
-        with torch.no_grad():
-            _ = self.edge_mlp(edge_attr)
-
     def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj, edge_attr: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Forward pass of the GN encoder.
@@ -86,9 +77,6 @@ class GNEncoder(MessagePassing):
         if isinstance(x, Tensor):
             x = (x, x)
         
-        if edge_attr is not None and self.edge_mlp is None:
-            self._initialize_edge_mlp(edge_attr)
-
         if edge_attr is None:
             self.edge_mlp = None
 
