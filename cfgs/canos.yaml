@@ -7,7 +7,7 @@ hidden_size: 128
 num_message_passing_steps: 2
 
 # Method of bayesian approx
-approx_method: "variational_inference"
+approx_method: "vanilla"
 
 # Training hyperparams
 rho: 0.0001
