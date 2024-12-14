@@ -106,20 +106,28 @@ def learning_step(model, optimizer, num_samples, approx_method, data_loader, eva
         
     # compute the violation degrees
     model.eval()
-    violation_degrees = {k: 0.0 for k in constraints.keys()}
-    for batch_idx, data in enumerate(data_loader):
-        data = data.to(device)
+    with torch.no_grad():
+        violation_degrees = {k: 0.0 for k in constraints.keys()}
+        for batch_idx, data in enumerate(data_loader):
+            data = data.to(device)
 
-        out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
+            out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
 
-        for name, constraint_fn in constraints.items():
-            if name == "power_balance":
-                violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
-            elif name == "flow":
-                violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
-            else:
-                violation = constraint_fn(out, data)
-            violation_degrees[name] += violation
+            # Bound constraints (6) and (7) from CANOS
+            enforce_bound_constraints(out, data)
+
+            # compute branch powers
+            branch_powers_ac_line = compute_branch_powers(out, data, 'ac_line', device)
+            branch_powers_transformer = compute_branch_powers(out, data, 'transformer', device)
+
+            for name, constraint_fn in constraints.items():
+                if name == "power_balance":
+                    violation = constraint_fn(out, data, branch_powers_ac_line, branch_powers_transformer, device)
+                elif name == "flow":
+                    violation = constraint_fn(data, branch_powers_ac_line, branch_powers_transformer)
+                else:
+                    violation = constraint_fn(out, data)
+                violation_degrees[name] += violation
 
     # update lambdas
     for name in lambdas.keys():
