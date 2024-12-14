@@ -3,7 +3,6 @@ import wandb
 
 from utils.loss import enforce_bound_constraints, compute_branch_powers, compute_loss_supervised, cost, BRANCH_FEATURE_INDICES
 from utils.metrics import compute_metrics
-from models.bayesian_gnn import HeteroBayesianGNN
 
 
 """
@@ -111,7 +110,7 @@ def learning_step(model, optimizer, num_samples, approx_method, data_loader, eva
     for batch_idx, data in enumerate(data_loader):
         data = data.to(device)
 
-        out = model(data.x_dict, data.edge_index_dict)
+        out = model(data.x_dict, data.edge_index_dict, data.edge_attr_dict)
 
         for name, constraint_fn in constraints.items():
             if name == "power_balance":
