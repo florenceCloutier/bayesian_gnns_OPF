@@ -116,7 +116,7 @@ class GNEncoder(MessagePassing):
         return kl_loss_total
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
-        edge_state_dict = state_dict.get(prefix + 'edge_mlp', None)
+        edge_state_dict = {k: v for k, v in state_dict.items() if k.startswith(prefix + 'edge_mlp')}
         if edge_state_dict:
             self.edge_mlp._load_from_state_dict(edge_state_dict, prefix + 'edge_mlp.', *args, **kwargs)
         else:
