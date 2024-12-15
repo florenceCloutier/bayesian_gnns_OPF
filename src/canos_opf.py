@@ -13,7 +13,7 @@ from omegaconf import DictConfig
 
 from utils.common import train_eval_models, monte_carlo_integration
 from sklearn.metrics import r2_score, mean_squared_error
-from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss, compute_branch_powers
+from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss, compute_branch_powers, compute_loss_supervised
 from models.CANOS import CANOS
 from utils.loss import cost
 
@@ -53,7 +53,7 @@ def evaluate_feasibility(predictions, batch, constraints, device):
         violation_degrees[name] /= 128 # Batch size
     return feasible, violation_degrees
 
-def evaluate_model_test(model, data_loader, device, constraints, cost_function):
+def evaluate_model_test(model, data_loader, device, constraints, cost_function, model_name):
     """Evaluates the model on the test set."""
     model.eval()
 
@@ -62,12 +62,17 @@ def evaluate_model_test(model, data_loader, device, constraints, cost_function):
     inference_times = []
     feasibility_results = {"power_balance": 0, "flow": 0, "voltage_angle": 0}
 
+    variances = []
     with torch.no_grad():
         for batch_idx, batch in enumerate(data_loader):
             batch = batch.to(device)
             
             start_time = time.time()
-            predictions = model(batch.x_dict, batch.edge_index_dict, batch.edge_attr_dict)
+            if model_name is not 'vanilla':
+                predictions = model(batch.x_dict, batch.edge_index_dict, batch.edge_attr_dict)
+            else:
+                _, predictive_variance = monte_carlo_integration(model, batch)
+                variances.append(predictive_variance)
             inference_times.append(time.time() - start_time)
 
             all_predictions.append(predictions)
@@ -95,8 +100,14 @@ def evaluate_model_test(model, data_loader, device, constraints, cost_function):
     # Compute metrics
     for key in final_predictions.keys():
         r2 = r2_score(final_targets[key].cpu().numpy(), final_predictions[key].cpu().numpy())
-        mse = mean_squared_error(final_targets[key].cpu().numpy(), final_predictions[key].cpu().numpy())
-        print(f"{key} - R²: {r2}, MSE: {mse}")
+        branch_powers_ac_line = compute_branch_powers(final_predictions[key], final_targets[key], 'ac_line', device)
+        branch_powers_transformer = compute_branch_powers(final_predictions[key], final_targets[key], 'transformer', device)
+
+        # supervised loss
+        L_supervised = compute_loss_supervised(final_predictions[key], final_targets[key], branch_powers_ac_line[key], branch_powers_transformer[key])
+        
+        # mse = mean_squared_error(final_targets[key].cpu().numpy(), final_predictions[key].cpu().numpy())
+        print(f"{key} - R²: {r2}, MSE: {L_supervised}")
    
     data = combine_all_batches(data_loader, device)
     
@@ -107,12 +118,12 @@ def evaluate_model_test(model, data_loader, device, constraints, cost_function):
     avg_inference_time = sum(inference_times) / len(inference_times)
     
     # Variance test predictions
-    variances = []
-    with torch.no_grad():
-        for batch in data_loader:
-            batch = batch.to(device)
-            _, predictive_variance = monte_carlo_integration(model, batch)
-            variances.append(predictive_variance)
+    
+    # with torch.no_grad():
+    #     for batch in data_loader:
+    #         batch = batch.to(device)
+    #         _, predictive_variance = monte_carlo_integration(model, batch)
+    #         variances.append(predictive_variance)
     
     # Initialize an empty dictionary to hold sums and counts for each key
     variance_sums = {}
@@ -171,7 +182,7 @@ def metrics(cfg):
     }
 
     # Evaluate model
-    metrics = evaluate_model_test(model, test_loader, device, constraints, cost)
+    metrics = evaluate_model_test(model, test_loader, device, constraints, cost, cfg.approx_method)
 
     # # Print results
     # print("Evaluation Metrics:")
