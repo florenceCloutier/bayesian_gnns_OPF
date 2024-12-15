@@ -2,30 +2,56 @@ import torch
 import hydra
 import wandb
 import time
+import numpy as np
 
 from torch_geometric.nn import GraphConv
 from torch_geometric.datasets import OPFDataset
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Batch
 
 from omegaconf import DictConfig
 
-from utils.common import train_eval_models
+from utils.common import train_eval_models, monte_carlo_integration
 from sklearn.metrics import r2_score, mean_squared_error
-from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss
+from utils.loss import flow_loss, voltage_angle_loss, power_balance_loss, compute_branch_powers
 from models.CANOS import CANOS
+from utils.loss import cost
+
+def combine_all_batches(data_loader, device):
+    all_batches = []
+    for batch in data_loader:
+        batch = batch.to(device)
+        all_batches.append(batch)
+    # Combine all batches into a single batch
+    combined_batch = Batch.from_data_list(all_batches)
+    return combined_batch
 
 # Define evaluation metrics
 def compute_cost(predictions, targets, cost_function):
     """Computes cost metric using a custom cost function."""
-    return cost_function(predictions, targets)
+    return cost_function(predictions, targets).mean().item()
 
-def evaluate_feasibility(predictions, constraints):
+def evaluate_feasibility(predictions, batch, constraints, device):
     """Check if predictions satisfy all given constraints."""
-    feasibility = {
-        name: (loss_fn(predictions).item() <= 1e-6)  # Tolerance for constraint satisfaction
-        for name, loss_fn in constraints.items()
-    }
-    return feasibility
+    branch_powers_ac_line = compute_branch_powers(predictions, batch, 'ac_line', device)
+    branch_powers_transformer = compute_branch_powers(predictions, batch, 'transformer', device)
+            
+    violation_degrees = {"power_balance": 0, "flow": 0, "voltage_angle": 0}
+    feasible = {"power_balance": 0, "flow": 0, "voltage_angle": 0}
+    for name, constraint_fn in constraints.items():
+        if name == "power_balance":
+            violation = constraint_fn(predictions, batch, branch_powers_ac_line, branch_powers_transformer, device)
+        elif name == "flow":
+            violation = constraint_fn(batch, branch_powers_ac_line, branch_powers_transformer)
+        else:
+            violation = constraint_fn(predictions, batch)
+        if violation.item() == 0:
+            feasible[name] += 1
+        violation_degrees[name] += violation
+
+    for name in constraints.keys():
+        violation_degrees[name] /= 128 # Batch size
+    return feasible, violation_degrees
 
 def evaluate_model_test(model, data_loader, device, constraints, cost_function):
     """Evaluates the model on the test set."""
@@ -34,42 +60,82 @@ def evaluate_model_test(model, data_loader, device, constraints, cost_function):
     all_predictions = []
     all_targets = []
     inference_times = []
-    feasibility_results = []
+    feasibility_results = {"power_balance": 0, "flow": 0, "voltage_angle": 0}
 
     with torch.no_grad():
-        for batch in data_loader:
+        for batch_idx, batch in enumerate(data_loader):
             batch = batch.to(device)
             
-            # Measure inference time
             start_time = time.time()
             predictions = model(batch.x_dict, batch.edge_index_dict, batch.edge_attr_dict)
             inference_times.append(time.time() - start_time)
 
-            # Collect predictions and targets
             all_predictions.append(predictions)
             all_targets.append(batch.y_dict)
 
             # Check feasibility
-            feasibility_results.append(evaluate_feasibility(predictions, constraints))
-
-    # Aggregate results
-    predictions = torch.cat(all_predictions, dim=0)
-    targets = torch.cat(all_targets, dim=0)
+            feasible, violation_degrees = evaluate_feasibility(predictions, batch, constraints, device)
+            feasibility_results = {key: feasibility_results[key] + feasible[key] for key in feasible}
+            if batch_idx > 0:
+                violation_degrees_results = {key: (violation_degrees_results[key] + violation_degrees[key]) / 2 for key in violation_degrees}
+            else:
+                violation_degrees_results = violation_degrees
+            
+    # Format predictions
+    all_predictions_combined = {key: [] for key in all_targets[0].keys()}
+    all_targets_combined = {key: [] for key in all_targets[0].keys()}
+    # Concatenate predictions and targets for each key
+    for batch_predictions, batch_targets in zip(all_predictions, all_targets):
+        for key in batch_targets.keys():
+            all_predictions_combined[key].append(batch_predictions[key])
+            all_targets_combined[key].append(batch_targets[key])
+    final_predictions = {key: torch.cat(tensors, dim=0) for key, tensors in all_predictions_combined.items()}
+    final_targets = {key: torch.cat(tensors, dim=0) for key, tensors in all_targets_combined.items()}
 
     # Compute metrics
-    r2 = r2_score(targets.cpu().numpy(), predictions.cpu().numpy())
-    mse = mean_squared_error(targets.cpu().numpy(), predictions.cpu().numpy())
-    cost = compute_cost(predictions, targets, cost_function)
+    for key in final_predictions.keys():
+        r2 = r2_score(final_targets[key].cpu().numpy(), final_predictions[key].cpu().numpy())
+        mse = mean_squared_error(final_targets[key].cpu().numpy(), final_predictions[key].cpu().numpy())
+        print(f"{key} - R²: {r2}, MSE: {mse}")
+   
+    data = combine_all_batches(data_loader, device)
+    
+    # Cost
+    cost = compute_cost(final_predictions, data, cost_function)
+    
+    # Inference time
     avg_inference_time = sum(inference_times) / len(inference_times)
-    overall_feasibility = all(all(feas.values()) for feas in feasibility_results)
+    
+    # Variance test predictions
+    variances = []
+    with torch.no_grad():
+        for batch in data_loader:
+            batch = batch.to(device)
+            _, predictive_variance = monte_carlo_integration(model, batch)
+            variances.append(predictive_variance)
+    
+    # Initialize an empty dictionary to hold sums and counts for each key
+    variance_sums = {}
+    counts = {}
+    # Iterate through all dictionaries in the variances list
+    for predictive_variance in variances:
+        for key, value in predictive_variance.items():
+            if key not in variance_sums:
+                variance_sums[key] = value.mean()  # Initialize sum
+                counts[key] = 1  # Initialize count
+            else:
+                variance_sums[key] += value.mean()  # Accumulate sum
+                counts[key] += 1  # Increment count
 
-    return {
-        "R2": r2,
-        "MSE": mse,
-        "Cost": cost,
-        "Inference Time": avg_inference_time,
-        "Feasibility": overall_feasibility,
-    }
+    # Compute the mean for each key
+    mean_variances = {key: variance_sums[key] / counts[key] for key in variance_sums}
+
+    print('Num samples: ', data.num_graphs)
+    print(f"Cost: {cost}")
+    print(f"Avg inference time: {avg_inference_time}")
+    print(f"Predictive variance on test set: ", mean_variances)
+    print(f"Feasibility: {feasibility_results}")
+    print(f"Violation degrees mean: {violation_degrees_results}")
 
 # Load test dataset
 def load_dataset(cfg):
@@ -104,12 +170,8 @@ def metrics(cfg):
         "power_balance": power_balance_loss,
     }
 
-    # def custom_cost_function(predictions, targets):
-    #     # Replace with your cost function logic
-    #     return ((predictions - targets) ** 2).mean().item()
-
-    # # Evaluate model
-    # metrics = evaluate_model_test(model, test_loader, device, constraints, custom_cost_function)
+    # Evaluate model
+    metrics = evaluate_model_test(model, test_loader, device, constraints, cost)
 
     # # Print results
     # print("Evaluation Metrics:")
